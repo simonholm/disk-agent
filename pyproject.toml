@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "disk-agent"
+version = "0.1.0"
+description = "A bounded, read-only disk usage snapshot and reporting tool"
+requires-python = ">=3.9"
+dependencies = [
+    "rich>=13.0",
+    "typer>=0.12",
+]
+
+[project.scripts]
+disk-agent = "disk_agent.cli:main"
+disk-snapshot = "disk_agent.cli:snapshot_main"
+disk-report = "disk_agent.cli:report_main"
+disk-diff = "disk_agent.cli:diff_main"
+disk-explain = "disk_agent.cli:explain_main"
+
+[tool.setuptools.packages.find]
+include = ["disk_agent*"]
