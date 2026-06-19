@@ -1,7 +1,0 @@
-Metadata-Version: 2.4
-Name: disk-agent
-Version: 0.1.0
-Summary: A bounded, read-only disk usage snapshot and reporting tool
-Requires-Python: >=3.9
-Requires-Dist: rich>=13.0
-Requires-Dist: typer>=0.12
