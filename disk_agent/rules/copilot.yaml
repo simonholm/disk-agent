@@ -1,0 +1,6 @@
+pattern: ~/.copilot
+classification: GitHub Copilot runtime
+risk: Low
+explanation: |
+  GitHub Copilot stores installation and runtime files under this directory.
+recommendation: Review the Copilot installation only if the growth is unexpected.

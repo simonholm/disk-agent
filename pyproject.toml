@@ -17,3 +17,6 @@ disk-agent = "disk_agent.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["disk_agent*"]
+
+[tool.setuptools.package-data]
+disk_agent = ["rules/*.yaml"]

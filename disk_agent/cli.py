@@ -7,6 +7,7 @@ from rich.console import Console
 
 from .diff import diff_command
 from .explain import explain_command
+from .investigate import investigate_command
 from .report import report_command
 from .snapshot import snapshot_command
 
@@ -15,6 +16,7 @@ COMMANDS: dict[str, Callable[[], str]] = {
     "report": report_command,
     "diff": diff_command,
     "explain": explain_command,
+    "investigate": investigate_command,
 }
 
 app = typer.Typer(
@@ -59,6 +61,12 @@ def explain_cli() -> None:
     raise typer.Exit(_run("explain"))
 
 
+@app.command("investigate")
+def investigate_cli() -> None:
+    """Collect evidence and produce a bounded diagnostic report."""
+    raise typer.Exit(_run("investigate"))
+
+
 def main() -> None:
     app()
 
@@ -77,6 +85,10 @@ def diff_main() -> int:
 
 def explain_main() -> int:
     return _run("explain")
+
+
+def investigate_main() -> int:
+    return _run("investigate")
 
 
 if __name__ == "__main__":

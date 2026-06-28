@@ -1,0 +1,6 @@
+pattern: ~/.local/share/containers
+classification: Podman storage
+risk: Medium
+explanation: |
+  Podman stores rootless images, containers, layers, and volumes in this location. Growth often follows image pulls or container builds.
+recommendation: Review Podman images, containers, and volumes.

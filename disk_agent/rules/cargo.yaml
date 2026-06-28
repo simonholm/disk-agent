@@ -1,0 +1,13 @@
+pattern: ~/.cargo-target/debug
+classification: Rust debug build artifacts
+risk: Low
+explanation: |
+  Rust debug builds can grow quickly because incremental compilation and unoptimized binaries retain intermediate artifacts.
+recommendation: Inspect Cargo build artifacts. Consider cargo clean only if the artifacts are no longer needed.
+---
+pattern: ~/.cargo/registry
+classification: Cargo package cache
+risk: Low
+explanation: |
+  Cargo keeps downloaded package sources and index data so future builds do not need to fetch them again.
+recommendation: Inspect the Cargo package cache if growth is unexpected.

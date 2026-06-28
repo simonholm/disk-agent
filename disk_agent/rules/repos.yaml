@@ -1,0 +1,6 @@
+pattern: ~/labs
+classification: User repositories
+risk: Low
+explanation: |
+  Repository workspaces commonly grow through build outputs, checkouts, local datasets, and generated files.
+recommendation: Inspect repository build outputs or generated data if growth is unexpected.

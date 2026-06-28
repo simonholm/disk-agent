@@ -1,0 +1,6 @@
+pattern: ~/.npm/_cacache
+classification: npm cache
+risk: Low
+explanation: |
+  npm stores package tarballs and metadata in its content-addressed cache to speed up installs.
+recommendation: Inspect the npm cache if growth is unexpected.

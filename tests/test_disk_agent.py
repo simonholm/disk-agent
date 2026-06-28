@@ -4,8 +4,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
+from disk_agent.classify import classify_path, load_rules
 from disk_agent.diff import SIGNIFICANT_BYTES, compare_snapshots, latest_two, render_diff
 from disk_agent.explain import render_explanation
+from disk_agent.investigate import assess, render_investigation
 from disk_agent.models import DirectoryUsage, FilesystemUsage, PodmanUsage, Snapshot, load_snapshot
 from disk_agent.report import render_report
 from disk_agent.snapshot import _collect_podman, save_snapshot
@@ -80,6 +82,20 @@ class DiskAgentTests(unittest.TestCase):
         self.assertEqual(explanation.count("Recommendation:"), 1)
         self.assertIn("~/.cache", explanation)
 
+    def test_rules_classify_known_growth(self):
+        classification = classify_path("~/.codex/packages/0.142.3", load_rules())
+
+        self.assertEqual(classification.classification, "Application releases")
+        self.assertEqual(classification.risk, "Low")
+        self.assertTrue(classification.known)
+
+    def test_rules_report_unknown_growth(self):
+        classification = classify_path("~/mystery-growth", load_rules())
+
+        self.assertEqual(classification.classification, "Unknown growth")
+        self.assertEqual(classification.risk, "Unknown")
+        self.assertFalse(classification.known)
+
     def test_explain_is_concise_with_exactly_one_recommendation(self):
         before = sample(18, 60, 0)
         after = sample(19, 61, 100 * 1024 * 1024)
@@ -88,6 +104,9 @@ class DiskAgentTests(unittest.TestCase):
 
         self.assertIn("Disk usage increased from 60% to 61%.", output)
         self.assertIn("+100M ~/.cache", output)
+        self.assertIn("Cause:", output)
+        self.assertIn("Risk:", output)
+        self.assertIn("Action:", output)
         self.assertIn("Growth appears normal", output)
         self.assertEqual(output.count("Recommendation:"), 1)
 
@@ -100,6 +119,45 @@ class DiskAgentTests(unittest.TestCase):
         self.assertIn("Growth appears unusual", output)
         self.assertIn("Review the largest contributor", output)
         self.assertEqual(output.count("Recommendation:"), 1)
+
+    def test_investigation_reads_like_operational_report(self):
+        before = sample(18, 60, 0)
+        before.home_usage.append(DirectoryUsage("~/.codex", 100 * 1024 * 1024))
+        after = sample(19, 62, 0)
+        after.home_usage.extend(
+            [
+                DirectoryUsage("~/.codex", 950 * 1024 * 1024),
+                DirectoryUsage("~/.codex/packages", 838 * 1024 * 1024),
+            ]
+        )
+        after.largest_directories.extend(
+            [
+                DirectoryUsage("~/.codex/packages", 838 * 1024 * 1024),
+                DirectoryUsage("~/.codex/packages/0.142.0", 250 * 1024 * 1024),
+                DirectoryUsage("~/.codex/packages/0.142.2", 280 * 1024 * 1024),
+                DirectoryUsage("~/.codex/packages/0.142.3", 308 * 1024 * 1024),
+            ]
+        )
+
+        output = render_investigation(before, after)
+
+        self.assertIn("Filesystem usage: 62%", output)
+        self.assertIn("+838M ~/.codex/packages", output)
+        self.assertIn("Application releases", output)
+        self.assertIn("3 retained Codex releases", output)
+        self.assertIn("Risk: Low", output)
+        self.assertIn("Assessment", output)
+        self.assertIn("Healthy", output)
+        self.assertIn("Review retained Codex releases.", output)
+
+    def test_assessment_escalates_unknown_large_growth(self):
+        before = sample(18, 60, 0)
+        after = sample(19, 61, 0)
+        after.filesystem.used_bytes = before.filesystem.used_bytes + 2 * 1024**3
+        growth = [type("Change", (), {"path": "~/unknown", "bytes": 2 * 1024**3})()]
+        classifications = {"~/unknown": classify_path("~/unknown", load_rules())}
+
+        self.assertEqual(assess(before, after, growth, classifications, set()), "Attention Recommended")
 
     def test_explain_handles_missing_optional_data(self):
         before = sample(18, 60, 0)

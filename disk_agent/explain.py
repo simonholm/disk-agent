@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from .classify import classify_path, load_rules
 from .diff import compare_snapshots, latest_two
+from .investigate import _cause, _non_overlapping
 from .models import Snapshot
 from .report import format_bytes
 
@@ -28,9 +30,26 @@ def render_explanation(before: Snapshot, after: Snapshot) -> str:
         if verb == "remained"
         else f"Disk usage {verb} from {old_percent}% to {new_percent}%."
     )
-    growth = [change for change in compare_snapshots(before, after) if change.bytes > 0]
+    rules = load_rules()
+    growth = _non_overlapping(change for change in compare_snapshots(before, after) if change.bytes > 0)
     lines = [first, "", "Largest contributors:", ""]
-    lines.extend(f"{format_bytes(change.bytes, signed=True)} {change.path}" for change in growth[:5])
+    for change in growth[:5]:
+        classification = classify_path(change.path, rules)
+        lines.extend(
+            [
+                f"{format_bytes(change.bytes, signed=True)} {change.path}",
+                "",
+                "Cause:",
+                _cause(change, classification, after),
+                "",
+                "Risk:",
+                classification.risk,
+                "",
+                "Action:",
+                classification.recommendation,
+                "",
+            ]
+        )
     if not growth:
         lines.append("No significant directory growth.")
 

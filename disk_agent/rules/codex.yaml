@@ -1,0 +1,6 @@
+pattern: ~/.codex/packages
+classification: Application releases
+risk: Low
+explanation: |
+  Codex stores complete standalone releases. Multiple retained versions are expected after updates.
+recommendation: Review retained Codex releases.
