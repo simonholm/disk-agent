@@ -94,9 +94,43 @@ def _parse_size(value: str) -> int:
     return 0
 
 
+def _du_total(path: Path) -> Tuple[int | None, str | None]:
+    if not path.exists():
+        return None, None
+    stdout, stderr, code = _run(["du", "-s", "-B1", str(path)])
+    line = stdout.splitlines()[0] if stdout.splitlines() else ""
+    size, separator, _ = line.partition("\t")
+    if not separator:
+        return None, stderr.strip() or "could not read Podman storage"
+    try:
+        return int(size), stderr.strip() if code != 0 and stderr.strip() else None
+    except ValueError:
+        return None, stderr.strip() or "could not parse Podman storage usage"
+
+
+def _collect_podman_storage() -> PodmanUsage:
+    storage = Path.home() / ".local" / "share" / "containers" / "storage"
+    if not storage.exists():
+        return PodmanUsage(error="podman is not installed")
+
+    images, images_error = _du_total(storage / "overlay-images")
+    containers, containers_error = _du_total(storage / "overlay-containers")
+    volumes, volumes_error = _du_total(storage / "volumes")
+    errors = [error for error in (images_error, containers_error, volumes_error) if error]
+    usage = PodmanUsage(
+        available=True,
+        images_bytes=images or 0,
+        containers_bytes=containers or 0,
+        volumes_bytes=volumes or 0,
+    )
+    if errors:
+        usage.error = "podman storage had unreadable paths"
+    return usage
+
+
 def _collect_podman() -> PodmanUsage:
     if shutil.which("podman") is None:
-        return PodmanUsage(error="podman is not installed")
+        return _collect_podman_storage()
     stdout, stderr, code = _run(["podman", "system", "df", "--format", "{{json .}}"])
     if code != 0:
         return PodmanUsage(error=stderr.strip() or "podman system df failed")

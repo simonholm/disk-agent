@@ -19,11 +19,17 @@ disk-agent diff
 disk-agent explain
 ```
 
-The equivalent standalone commands are `disk-snapshot`, `disk-report`,
-`disk-diff`, and `disk-explain`. Snapshots are stored in
-`~/.disk-agent/snapshots/YYYY-MM-DD.json`.
+Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
 
 Collection is finite and local: filesystem statistics, bounded-depth `du`
-scans, and `podman system df`. Permission errors and unavailable optional paths
-or Podman are recorded without failing the snapshot.
+scans, and Podman usage from `podman system df` or rootless Podman storage when
+the binary is unavailable. Permission errors and unavailable optional paths or
+Podman are recorded without failing the snapshot.
 
+## Retired Bash scripts
+
+The previous standalone Bash commands, `disk-snapshot` and `disk-report`, have
+been retired in favor of the installed Python `disk-agent` command. On this VPS
+they are temporarily preserved as `~/.local/bin/disk-snapshot.bak` and
+`~/.local/bin/disk-report.bak` for comparison and rollback while the Python
+implementation is confirmed as the sole operational version.

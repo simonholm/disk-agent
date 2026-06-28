@@ -2,12 +2,13 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from disk_agent.diff import SIGNIFICANT_BYTES, compare_snapshots, latest_two, render_diff
 from disk_agent.explain import render_explanation
 from disk_agent.models import DirectoryUsage, FilesystemUsage, PodmanUsage, Snapshot, load_snapshot
 from disk_agent.report import render_report
-from disk_agent.snapshot import save_snapshot
+from disk_agent.snapshot import _collect_podman, save_snapshot
 
 
 def sample(day: int, used_percent: int, cache_bytes: int) -> Snapshot:
@@ -115,6 +116,41 @@ class DiskAgentTests(unittest.TestCase):
         self.assertIn("Podman comparison unavailable.", output)
         self.assertIn("No unusual growth was detected.", output)
         self.assertEqual(output.count("Recommendation:"), 1)
+
+    def test_podman_uses_rootless_storage_when_binary_is_absent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            home = Path(temporary)
+            storage = home / ".local" / "share" / "containers" / "storage"
+            (storage / "overlay-images").mkdir(parents=True)
+            (storage / "overlay-containers").mkdir()
+            (storage / "volumes").mkdir()
+            storage_calls = {
+                str(storage / "overlay-images"): ("100\timages\n", "", 0),
+                str(storage / "overlay-containers"): ("200\tcontainers\n", "", 0),
+                str(storage / "volumes"): ("300\tvolumes\n", "", 0),
+            }
+
+            def fake_run(command):
+                return storage_calls[str(command[-1])]
+
+            with patch("disk_agent.snapshot.shutil.which", return_value=None):
+                with patch("disk_agent.snapshot.Path.home", return_value=home):
+                    with patch("disk_agent.snapshot._run", side_effect=fake_run):
+                        usage = _collect_podman()
+
+            self.assertTrue(usage.available)
+            self.assertEqual(usage.images_bytes, 100)
+            self.assertEqual(usage.containers_bytes, 200)
+            self.assertEqual(usage.volumes_bytes, 300)
+
+    def test_podman_reports_unavailable_when_binary_and_storage_are_absent(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            with patch("disk_agent.snapshot.shutil.which", return_value=None):
+                with patch("disk_agent.snapshot.Path.home", return_value=Path(temporary)):
+                    usage = _collect_podman()
+
+        self.assertFalse(usage.available)
+        self.assertEqual(usage.error, "podman is not installed")
 
 
 if __name__ == "__main__":

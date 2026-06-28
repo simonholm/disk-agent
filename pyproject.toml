@@ -14,10 +14,6 @@ dependencies = [
 
 [project.scripts]
 disk-agent = "disk_agent.cli:main"
-disk-snapshot = "disk_agent.cli:snapshot_main"
-disk-report = "disk_agent.cli:report_main"
-disk-diff = "disk_agent.cli:diff_main"
-disk-explain = "disk_agent.cli:explain_main"
 
 [tool.setuptools.packages.find]
 include = ["disk_agent*"]
