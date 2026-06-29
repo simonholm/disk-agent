@@ -1,0 +1,45 @@
+{
+  "copilot_usage": [],
+  "filesystem": {
+    "available_bytes": 400,
+    "filesystem": "/dev/vda",
+    "mountpoint": "/",
+    "total_bytes": 1000,
+    "used_bytes": 600,
+    "used_percent": 60
+  },
+  "home_usage": [
+    {
+      "bytes": 500,
+      "path": "~"
+    },
+    {
+      "bytes": 104857600,
+      "path": "~/.cache"
+    },
+    {
+      "bytes": 209715200,
+      "path": "~/labs"
+    }
+  ],
+  "largest_directories": [
+    {
+      "bytes": 209715200,
+      "path": "~/labs"
+    },
+    {
+      "bytes": 104857600,
+      "path": "~/.cache"
+    }
+  ],
+  "local_share_usage": [],
+  "podman": {
+    "available": true,
+    "containers_bytes": 200,
+    "images_bytes": 100,
+    "volumes_bytes": 300
+  },
+  "schema_version": 1,
+  "timestamp": "2026-06-19T10:50:00+00:00",
+  "warnings": []
+}

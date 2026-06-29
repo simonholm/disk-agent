@@ -20,6 +20,23 @@ disk-agent explain
 disk-agent investigate
 ```
 
+## Rust migration
+
+A Rust rewrite is being developed beside the Python implementation under the
+temporary binary name `disk-agent-rs`. The Python implementation remains the
+behavior oracle until parity is proven.
+
+Current Rust phase:
+
+```sh
+CARGO_TARGET_DIR=target cargo test
+CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- report
+```
+
+The Rust binary currently supports JSON-compatible snapshot loading, snapshot
+saving, report rendering, and saved-snapshot diff/explain logic. Live snapshot
+collection and live investigation are not ported yet.
+
 Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
 
 Collection is finite and local: filesystem statistics, bounded-depth `du`

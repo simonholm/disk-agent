@@ -1,0 +1,23 @@
+# disk-agent Rust Design
+
+The Rust implementation is a side-by-side rewrite of the existing Python
+utility. During migration the Python implementation remains the behavior oracle.
+
+The temporary binary is `disk-agent-rs`. It does not import, execute, or depend
+on Python at runtime.
+
+## Layers
+
+`main.rs` and `cli.rs` parse arguments and dispatch commands.
+
+Business logic lives in `snapshot.rs`, `report.rs`, `diff.rs`, `explain.rs`,
+`investigate.rs`, and `classify.rs`.
+
+Linux-specific and runtime infrastructure lives in `command.rs`,
+`filesystem.rs`, `podman.rs`, `json.rs`, `paths.rs`, `output.rs`, and
+`errors.rs`.
+
+Phase 1 intentionally implements JSON compatibility, snapshot loading/saving,
+report rendering, and saved-snapshot diff/explain logic. Live collection remains
+unimplemented until the command runner, filesystem, and Podman modules are
+ported.

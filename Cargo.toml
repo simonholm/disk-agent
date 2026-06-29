@@ -1,0 +1,23 @@
+[package]
+name = "disk-agent-rs"
+version = "0.1.0"
+edition = "2021"
+description = "Rust rewrite of the bounded, read-only disk-agent utility"
+publish = false
+
+[lib]
+name = "disk_agent_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "disk-agent-rs"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"

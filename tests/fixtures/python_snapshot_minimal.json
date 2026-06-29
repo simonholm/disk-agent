@@ -1,0 +1,11 @@
+{
+  "filesystem": {
+    "available_bytes": 500,
+    "filesystem": "/dev/vda",
+    "mountpoint": "/",
+    "total_bytes": 1000,
+    "used_bytes": 500,
+    "used_percent": 50
+  },
+  "timestamp": "2026-06-18T10:50:00+00:00"
+}

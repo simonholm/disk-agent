@@ -1,0 +1,26 @@
+use clap::{Parser, Subcommand};
+
+#[derive(Debug, Parser)]
+#[command(
+    name = "disk-agent-rs",
+    about = "Bounded, read-only disk usage observer.",
+    disable_help_subcommand = true
+)]
+pub struct Cli {
+    #[command(subcommand)]
+    pub command: Command,
+}
+
+#[derive(Debug, Clone, Copy, Subcommand)]
+pub enum Command {
+    /// Collect and store today's disk usage snapshot.
+    Snapshot,
+    /// Show the latest snapshot.
+    Report,
+    /// Compare the latest two daily snapshots.
+    Diff,
+    /// Explain the latest significant changes.
+    Explain,
+    /// Collect evidence and produce a bounded diagnostic report.
+    Investigate,
+}
