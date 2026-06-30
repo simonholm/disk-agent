@@ -1,16 +1,16 @@
 [package]
-name = "disk-agent-rs"
+name = "disk-agent"
 version = "0.1.0"
 edition = "2021"
-description = "Rust rewrite of the bounded, read-only disk-agent utility"
+description = "Bounded, read-only disk usage observer"
 publish = false
 
 [lib]
-name = "disk_agent_rs"
+name = "disk_agent"
 path = "src/lib.rs"
 
 [[bin]]
-name = "disk-agent-rs"
+name = "disk-agent"
 path = "src/main.rs"
 
 [dependencies]

@@ -1,7 +1,7 @@
-use disk_agent_rs::classify::classify_path;
-use disk_agent_rs::investigate::{assess, render_investigation};
-use disk_agent_rs::models::{DirectoryUsage, FilesystemUsage, Snapshot, UsageChange};
-use disk_agent_rs::rules::load_rules;
+use disk_agent::classify::classify_path;
+use disk_agent::investigate::{assess, render_investigation};
+use disk_agent::models::{DirectoryUsage, FilesystemUsage, Snapshot, UsageChange};
+use disk_agent::rules::load_rules;
 
 fn sample(day: u8, used_percent: i64, cache_bytes: i64) -> Snapshot {
     Snapshot {

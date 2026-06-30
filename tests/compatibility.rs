@@ -1,4 +1,4 @@
-use disk_agent_rs::json::load_snapshot;
+use disk_agent::json::load_snapshot;
 
 #[test]
 fn reads_python_snapshot_with_all_current_fields() {

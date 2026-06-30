@@ -2,9 +2,9 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use anyhow::Result;
-use disk_agent_rs::command::{CommandOutput, CommandRunner};
-use disk_agent_rs::filesystem::{collect_du_with_home, collect_filesystem_with_runner};
-use disk_agent_rs::podman::{collect_podman_with_runner, parse_size};
+use disk_agent::command::{CommandOutput, CommandRunner};
+use disk_agent::filesystem::{collect_du_with_home, collect_filesystem_with_runner};
+use disk_agent::podman::{collect_podman_with_runner, parse_size};
 
 #[derive(Debug, Default)]
 struct FakeRunner {

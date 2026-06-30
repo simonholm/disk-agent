@@ -1,10 +1,10 @@
 # disk-agent Rust Design
 
-The Rust implementation is a side-by-side rewrite of the existing Python
-utility. During migration the Python implementation remains the behavior oracle.
+The Rust implementation is the operational implementation of the disk-agent
+utility.
 
-The temporary binary is `disk-agent-rs`. It does not import, execute, or depend
-on Python at runtime.
+The binary is `disk-agent`. It does not import, execute, or depend on Python at
+runtime.
 
 ## Layers
 
@@ -20,5 +20,4 @@ Linux-specific and runtime infrastructure lives in `command.rs`,
 The Rust implementation includes JSON compatibility, snapshot loading/saving,
 report rendering, saved-snapshot diff/explain logic, live command execution,
 filesystem collection, Podman collection, live `snapshot`, and live
-`investigate`. The temporary binary name remains until the installed Python
-launcher can be replaced deliberately.
+`investigate`.

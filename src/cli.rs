@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Debug, Parser)]
 #[command(
-    name = "disk-agent-rs",
+    name = "disk-agent",
     about = "Bounded, read-only disk usage observer.",
     disable_help_subcommand = true
 )]

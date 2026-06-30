@@ -1,6 +1,6 @@
-use disk_agent_rs::json::load_snapshot;
-use disk_agent_rs::models::{FilesystemUsage, Snapshot};
-use disk_agent_rs::snapshot::save_snapshot;
+use disk_agent::json::load_snapshot;
+use disk_agent::models::{FilesystemUsage, Snapshot};
+use disk_agent::snapshot::save_snapshot;
 
 #[test]
 fn saves_pretty_json_snapshot_with_daily_name_and_reads_it_back() {

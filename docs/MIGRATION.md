@@ -1,7 +1,8 @@
 # Rust Migration
 
-The migration keeps a reviewable Rust binary named `disk-agent-rs` beside the
-existing Python implementation until host parity is approved.
+The Rust implementation is now the installed `disk-agent` command. Host parity
+has been validated in the Arch development environment, and the final Ubuntu
+migration replaces the obsolete Python launcher with Cargo's installed binary.
 
 Implemented in Rust:
 
@@ -23,14 +24,13 @@ Implemented in Rust:
 - tests for Python snapshot fixtures
 - tests for live collection edge cases
 
-Still pending before replacing the installed `disk-agent` command:
+Final migration steps:
 
-- Review live Rust output on Ubuntu 24.04 and Arch against the Python behavior
-  oracle.
-- Rename the Rust binary from `disk-agent-rs` to `disk-agent`.
-- Install with `cargo install --path . --locked` or an equivalent explicit
-  install step.
-- Remove the legacy Python launcher after the installed command is confirmed to
-  resolve to the Rust binary.
-- Archive or delete Python implementation files after the Rust binary is the
-  operational interface.
+- Rename the Rust package and binary to `disk-agent`.
+- Install with `cargo install --path . --locked`.
+- Remove `~/.local/bin/disk-agent`, the obsolete Python launcher that masked
+  Cargo's binary earlier in PATH.
+- Verify `disk-agent` resolves to `~/.cargo/bin/disk-agent` on Ubuntu.
+
+The Python implementation files remain in the repository as legacy reference
+material until a separate cleanup explicitly removes them.

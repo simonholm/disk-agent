@@ -1,5 +1,5 @@
-use disk_agent_rs::json::load_snapshot;
-use disk_agent_rs::report::render_report;
+use disk_agent::json::load_snapshot;
+use disk_agent::report::render_report;
 
 #[test]
 fn report_matches_python_semantics_for_loaded_snapshot() {

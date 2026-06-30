@@ -7,7 +7,7 @@ modifies user data.
 ## Install
 
 ```sh
-python3 -m pip install --user -e .
+cargo install --path . --locked
 ```
 
 ## Use
@@ -20,28 +20,24 @@ disk-agent explain
 disk-agent investigate
 ```
 
-## Rust migration
+## Implementation
 
-A Rust rewrite is being developed beside the Python implementation under the
-temporary binary name `disk-agent-rs`. The Python implementation remains the
-behavior oracle until parity is proven.
+`disk-agent` is now the Rust implementation. The obsolete Python launcher has
+been removed from `~/.local/bin`; the installed command should resolve to
+Cargo's `~/.cargo/bin/disk-agent`.
 
-Current Rust phase:
+Validation:
 
 ```sh
 CARGO_TARGET_DIR=target cargo test
-CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- snapshot
-CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- report
-CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- diff
-CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- explain
-CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- investigate
+cargo install --path . --locked
+which -a disk-agent
+disk-agent report
 ```
 
-The Rust binary currently supports JSON-compatible snapshot loading and saving,
-report rendering, saved-snapshot diff/explain logic, live snapshot collection,
-Podman usage collection, and live investigation. It is still named
-`disk-agent-rs` until host parity has been reviewed and the installed
-`disk-agent` command can be replaced deliberately.
+The Rust binary supports JSON-compatible snapshot loading and saving, report
+rendering, saved-snapshot diff/explain logic, live snapshot collection, Podman
+usage collection, and live investigation.
 
 Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
 
@@ -58,7 +54,6 @@ It never deletes files, prunes Podman, clears caches, or runs cleanup commands.
 ## Retired Bash scripts
 
 The previous standalone Bash commands, `disk-snapshot` and `disk-report`, have
-been retired in favor of the installed Python `disk-agent` command. On this VPS
-they are temporarily preserved as `~/.local/bin/disk-snapshot.bak` and
-`~/.local/bin/disk-report.bak` for comparison and rollback while the Python
-implementation is confirmed as the sole operational version.
+been retired in favor of the installed Rust `disk-agent` command. On this VPS
+they are preserved as `~/.local/bin/disk-snapshot.bak` and
+`~/.local/bin/disk-report.bak` for comparison and rollback.

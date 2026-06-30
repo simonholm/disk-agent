@@ -1,5 +1,5 @@
-use disk_agent_rs::diff::{compare_snapshots, render_diff, SIGNIFICANT_BYTES};
-use disk_agent_rs::models::{DirectoryUsage, FilesystemUsage, Snapshot};
+use disk_agent::diff::{compare_snapshots, render_diff, SIGNIFICANT_BYTES};
+use disk_agent::models::{DirectoryUsage, FilesystemUsage, Snapshot};
 
 fn sample(day: u8, used_percent: i64, cache_bytes: i64) -> Snapshot {
     Snapshot {
