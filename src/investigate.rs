@@ -1,9 +1,15 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::{anyhow, Result};
 
 use crate::classify::{classify_path, is_child_path};
 use crate::diff::compare_snapshots;
+use crate::json::load_snapshot;
 use crate::models::{Snapshot, UsageChange};
+use crate::paths;
+use crate::report::snapshot_paths;
 use crate::rules::{load_rules, Classification};
+use crate::snapshot::{collect_snapshot, save_snapshot};
 
 pub const LARGE_CACHE_BYTES: i64 = 2 * 1024_i64.pow(3);
 pub const LARGE_GROWTH_BYTES: i64 = 5 * 1024_i64.pow(3);
@@ -145,9 +151,45 @@ pub fn render_investigation(
 }
 
 pub fn investigate_command() -> Result<String> {
-    Err(anyhow!(
-        "investigate is not implemented in the Rust phase 1 binary because live collection is not ported"
-    ))
+    let directory = paths::snapshot_dir()?;
+    let baseline_path = latest_snapshot_path(&directory)?;
+    let paths = snapshot_paths(&directory)?;
+    let previous_before = if paths.len() >= 2 {
+        Some(load_snapshot(&paths[paths.len() - 2])?)
+    } else {
+        None
+    };
+    let before = load_snapshot(&baseline_path)?;
+    let after = collect_snapshot()?;
+    let saved = save_if_new_day(&after, &directory)?;
+
+    let report = render_investigation(&before, &after, previous_before.as_ref());
+    Ok(match saved {
+        None => format!(
+            "{report}\n\nFresh snapshot was collected in memory; today's snapshot file already exists."
+        ),
+        Some(path) => format!("{report}\n\nSnapshot stored: {}", path.display()),
+    })
+}
+
+fn latest_snapshot_path(directory: &Path) -> Result<PathBuf> {
+    let paths = snapshot_paths(directory)?;
+    paths
+        .last()
+        .cloned()
+        .ok_or_else(|| anyhow!("no snapshots found; run 'disk-agent snapshot' first"))
+}
+
+fn save_if_new_day(snapshot: &Snapshot, directory: &Path) -> Result<Option<PathBuf>> {
+    let day = snapshot
+        .timestamp
+        .get(..10)
+        .ok_or_else(|| anyhow!("snapshot timestamp is too short"))?;
+    let destination = directory.join(format!("{day}.json"));
+    if destination.exists() {
+        return Ok(None);
+    }
+    save_snapshot(snapshot, directory).map(Some)
 }
 
 fn repeated_growth(
