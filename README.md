@@ -30,12 +30,18 @@ Current Rust phase:
 
 ```sh
 CARGO_TARGET_DIR=target cargo test
+CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- snapshot
 CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- report
+CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- diff
+CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- explain
+CARGO_TARGET_DIR=target cargo run --bin disk-agent-rs -- investigate
 ```
 
-The Rust binary currently supports JSON-compatible snapshot loading, snapshot
-saving, report rendering, and saved-snapshot diff/explain logic. Live snapshot
-collection and live investigation are not ported yet.
+The Rust binary currently supports JSON-compatible snapshot loading and saving,
+report rendering, saved-snapshot diff/explain logic, live snapshot collection,
+Podman usage collection, and live investigation. It is still named
+`disk-agent-rs` until host parity has been reviewed and the installed
+`disk-agent` command can be replaced deliberately.
 
 Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
 

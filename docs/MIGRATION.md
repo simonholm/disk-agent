@@ -1,9 +1,9 @@
 # Rust Migration
 
-Phase 1 creates a reviewable Rust binary named `disk-agent-rs` beside the
-existing Python implementation.
+The migration keeps a reviewable Rust binary named `disk-agent-rs` beside the
+existing Python implementation until host parity is approved.
 
-Completed in phase 1:
+Implemented in Rust:
 
 - Rust crate scaffold
 - CLI skeleton
@@ -12,18 +12,25 @@ Completed in phase 1:
 - snapshot saving with temporary file rename
 - report command
 - saved-snapshot diff and explain commands
-- rule parser compatibility for embedded rule files
-- tests for Python snapshot fixtures
-
-Not completed in phase 1:
-
+- live command execution with timeout and `LC_ALL=C`
 - live `df` collection
-- live `du` collection
-- `podman system df`
-- Podman storage fallback inspection
+- live `du` collection with partial-data warning handling
+- `podman system df` parsing
+- Podman rootless storage fallback inspection
 - live `snapshot` command
 - live `investigate` command
+- rule parser compatibility for embedded rule files
+- tests for Python snapshot fixtures
+- tests for live collection edge cases
 
-The next migration step is to port `command.rs`, then `filesystem.rs`, then
-`podman.rs`. After that, `snapshot.rs` can orchestrate live collection without
-mixing Python and Rust at runtime.
+Still pending before replacing the installed `disk-agent` command:
+
+- Review live Rust output on Ubuntu 24.04 and Arch against the Python behavior
+  oracle.
+- Rename the Rust binary from `disk-agent-rs` to `disk-agent`.
+- Install with `cargo install --path . --locked` or an equivalent explicit
+  install step.
+- Remove the legacy Python launcher after the installed command is confirmed to
+  resolve to the Rust binary.
+- Archive or delete Python implementation files after the Rust binary is the
+  operational interface.

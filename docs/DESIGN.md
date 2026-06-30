@@ -17,7 +17,8 @@ Linux-specific and runtime infrastructure lives in `command.rs`,
 `filesystem.rs`, `podman.rs`, `json.rs`, `paths.rs`, `output.rs`, and
 `errors.rs`.
 
-Phase 1 intentionally implements JSON compatibility, snapshot loading/saving,
-report rendering, and saved-snapshot diff/explain logic. Live collection remains
-unimplemented until the command runner, filesystem, and Podman modules are
-ported.
+The Rust implementation includes JSON compatibility, snapshot loading/saving,
+report rendering, saved-snapshot diff/explain logic, live command execution,
+filesystem collection, Podman collection, live `snapshot`, and live
+`investigate`. The temporary binary name remains until the installed Python
+launcher can be replaced deliberately.
