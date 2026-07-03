@@ -26,6 +26,9 @@ disk-agent investigate
 been removed from `~/.local/bin`; the installed command should resolve to
 Cargo's `~/.cargo/bin/disk-agent`.
 
+The retired Python implementation is kept under `legacy/python/` for historical
+reference only.
+
 Validation:
 
 ```sh
