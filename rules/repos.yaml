@@ -1,5 +1,6 @@
 pattern: ~/labs
 classification: User repositories
+category: Development
 risk: Low
 explanation: |
   Repository workspaces commonly grow through build outputs, checkouts, local datasets, and generated files.

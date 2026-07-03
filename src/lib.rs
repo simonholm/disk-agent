@@ -1,3 +1,4 @@
+pub mod attribution;
 pub mod classify;
 pub mod cli;
 pub mod command;

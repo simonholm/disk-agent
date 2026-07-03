@@ -2,6 +2,7 @@
 pub struct Rule {
     pub pattern: String,
     pub classification: String,
+    pub category: String,
     pub risk: String,
     pub explanation: String,
     pub recommendation: String,
@@ -11,6 +12,7 @@ pub struct Rule {
 pub struct Classification {
     pub path: String,
     pub classification: String,
+    pub category: String,
     pub risk: String,
     pub explanation: String,
     pub recommendation: String,
@@ -19,14 +21,16 @@ pub struct Classification {
 
 pub static UNKNOWN: ClassificationStatic = ClassificationStatic {
     classification: "Unknown growth",
+    category: "Unclassified",
     risk: "Unknown",
-    explanation: "No matching rule is available for this location.",
+    explanation: "Growth occurred in unclassified locations.",
     recommendation: "Inspect this location before taking any cleanup action.",
     known: false,
 };
 
 pub struct ClassificationStatic {
     pub classification: &'static str,
+    pub category: &'static str,
     pub risk: &'static str,
     pub explanation: &'static str,
     pub recommendation: &'static str,
@@ -34,6 +38,7 @@ pub struct ClassificationStatic {
 }
 
 const RULE_FILES: &[&str] = &[
+    include_str!("../rules/common.yaml"),
     include_str!("../rules/cargo.yaml"),
     include_str!("../rules/codex.yaml"),
     include_str!("../rules/copilot.yaml"),
@@ -111,9 +116,13 @@ fn parse_rule_document(text: &str) -> Rule {
     }
     finish_block(&mut values, &mut current_key, &mut block_lines);
 
+    let classification = values.remove("classification").unwrap_or_default();
     Rule {
         pattern: values.remove("pattern").unwrap_or_default(),
-        classification: values.remove("classification").unwrap_or_default(),
+        category: values
+            .remove("category")
+            .unwrap_or_else(|| classification.clone()),
+        classification,
         risk: values.remove("risk").unwrap_or_default(),
         explanation: values.remove("explanation").unwrap_or_default(),
         recommendation: values

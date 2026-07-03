@@ -1,0 +1,79 @@
+pattern: ~/.cache
+classification: Cache
+category: Cache
+risk: Low
+explanation: |
+  User cache directories commonly grow as applications retain reusable data.
+recommendation: Cache growth is usually safe to inspect later; no cleanup is required now.
+---
+pattern: ~/.cargo
+classification: Rust
+category: Rust
+risk: Low
+explanation: |
+  Rust toolchains and package caches commonly grow during builds and dependency downloads.
+recommendation: Review recent Rust builds or dependencies if the increase was unexpected.
+---
+pattern: ~/.npm
+classification: Node
+category: Node
+risk: Low
+explanation: |
+  Node package data commonly grows during installs and dependency updates.
+recommendation: Review recent Node package installs if the increase was unexpected.
+---
+pattern: ~/.local/share/Trash
+classification: Trash
+category: Trash
+risk: Low
+explanation: |
+  Desktop trash stores deleted files until it is emptied.
+recommendation: Review the trash contents before removing anything.
+---
+pattern: ~/.local/share/containers
+classification: Podman storage
+category: Podman
+risk: Medium
+explanation: |
+  Podman stores rootless images, containers, layers, and volumes in this location.
+recommendation: Review Podman images, containers, and volumes if this growth was unexpected; no pruning is recommended from this report alone.
+---
+pattern: ~/Downloads
+classification: Downloads
+category: Downloads
+risk: Low
+explanation: |
+  Downloads commonly grow when files are saved from browsers, transfers, or tools.
+recommendation: Review ~/Downloads if the increase was unexpected.
+---
+pattern: ~/Pictures
+classification: Photos
+category: Photos
+risk: Low
+explanation: |
+  Photo libraries and imported images commonly grow under Pictures.
+recommendation: Review recent photo imports if the increase was unexpected.
+---
+pattern: ~/Videos
+classification: Media
+category: Media
+risk: Low
+explanation: |
+  Video files and media exports commonly account for large user-data growth.
+recommendation: Review recent media files if the increase was unexpected.
+---
+pattern: ~/labs
+classification: Development
+category: Development
+risk: Low
+explanation: |
+  Development workspaces commonly grow through build outputs, checkouts, local datasets, and generated files.
+recommendation: Review recent build artifacts or repository changes if unexpected.
+---
+pattern: /var/log
+classification: System logs
+category: System logs
+risk: Medium
+explanation: |
+  System logs can grow quickly when services are noisy or failing.
+recommendation: Inspect logs before cleanup.

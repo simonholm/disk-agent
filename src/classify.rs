@@ -15,6 +15,7 @@ pub fn classify_path(path: &str, rules: Option<&[Rule]>) -> Classification {
             return Classification {
                 path: path.to_string(),
                 classification: rule.classification.clone(),
+                category: rule.category.clone(),
                 risk: rule.risk.clone(),
                 explanation: rule.explanation.clone(),
                 recommendation: rule.recommendation.clone(),
@@ -26,6 +27,7 @@ pub fn classify_path(path: &str, rules: Option<&[Rule]>) -> Classification {
     Classification {
         path: path.to_string(),
         classification: UNKNOWN.classification.to_string(),
+        category: UNKNOWN.category.to_string(),
         risk: UNKNOWN.risk.to_string(),
         explanation: UNKNOWN.explanation.to_string(),
         recommendation: UNKNOWN.recommendation.to_string(),

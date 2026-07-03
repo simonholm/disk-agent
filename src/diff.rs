@@ -24,6 +24,14 @@ pub fn latest_two_from(directory: &Path) -> Result<(Snapshot, Snapshot)> {
 }
 
 pub fn compare_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<UsageChange> {
+    snapshot_changes(before, after, SIGNIFICANT_BYTES)
+}
+
+pub fn snapshot_changes(
+    before: &Snapshot,
+    after: &Snapshot,
+    minimum_abs_bytes: i64,
+) -> Vec<UsageChange> {
     let old = usage_map(before);
     let new = usage_map(after);
     let paths = old
@@ -37,9 +45,15 @@ pub fn compare_snapshots(before: &Snapshot, after: &Snapshot) -> Vec<UsageChange
             bytes: new.get(&path).copied().unwrap_or(0) - old.get(&path).copied().unwrap_or(0),
             path,
         })
-        .filter(|change| change.bytes.abs() >= SIGNIFICANT_BYTES)
+        .filter(|change| change.bytes.abs() >= minimum_abs_bytes)
         .collect::<Vec<_>>();
-    changes.sort_by(|left, right| right.bytes.abs().cmp(&left.bytes.abs()));
+    changes.sort_by(|left, right| {
+        right
+            .bytes
+            .abs()
+            .cmp(&left.bytes.abs())
+            .then_with(|| left.path.cmp(&right.path))
+    });
     changes
 }
 
