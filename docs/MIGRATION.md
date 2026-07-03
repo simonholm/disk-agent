@@ -21,7 +21,7 @@ Implemented in Rust:
 - live `snapshot` command
 - live `investigate` command
 - rule parser compatibility for embedded rule files
-- tests for Python snapshot fixtures
+- tests for snapshot fixtures
 - tests for live collection edge cases
 
 Final migration steps:

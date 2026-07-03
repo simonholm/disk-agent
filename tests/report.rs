@@ -2,8 +2,8 @@ use disk_agent::json::load_snapshot;
 use disk_agent::report::render_report;
 
 #[test]
-fn report_matches_python_semantics_for_loaded_snapshot() {
-    let snapshot = load_snapshot("tests/fixtures/python_snapshot_full.json".as_ref()).unwrap();
+fn report_renders_loaded_snapshot_summary() {
+    let snapshot = load_snapshot("tests/fixtures/snapshot_full.json".as_ref()).unwrap();
     let output = render_report(&snapshot);
 
     assert!(output.contains("Filesystem usage: 60% (600B of 1000B)"));

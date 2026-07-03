@@ -1,8 +1,8 @@
 use disk_agent::json::load_snapshot;
 
 #[test]
-fn reads_python_snapshot_with_all_current_fields() {
-    let snapshot = load_snapshot("tests/fixtures/python_snapshot_full.json".as_ref()).unwrap();
+fn reads_snapshot_with_all_current_fields() {
+    let snapshot = load_snapshot("tests/fixtures/snapshot_full.json".as_ref()).unwrap();
 
     assert_eq!(snapshot.timestamp, "2026-06-19T10:50:00+00:00");
     assert_eq!(snapshot.schema_version, 1);
@@ -13,8 +13,8 @@ fn reads_python_snapshot_with_all_current_fields() {
 }
 
 #[test]
-fn defaults_missing_optional_python_fields() {
-    let snapshot = load_snapshot("tests/fixtures/python_snapshot_minimal.json".as_ref()).unwrap();
+fn defaults_missing_optional_snapshot_fields() {
+    let snapshot = load_snapshot("tests/fixtures/snapshot_minimal.json".as_ref()).unwrap();
 
     assert_eq!(snapshot.schema_version, 1);
     assert!(snapshot.home_usage.is_empty());

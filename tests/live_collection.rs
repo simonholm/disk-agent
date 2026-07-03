@@ -137,7 +137,7 @@ fn podman_collection_uses_rootless_storage_when_binary_is_absent() {
 }
 
 #[test]
-fn podman_size_parser_matches_python_units() {
+fn podman_size_parser_uses_decimal_units() {
     assert_eq!(parse_size("0B"), 0);
     assert_eq!(parse_size("1.5GB"), 1_500_000_000);
     assert_eq!(parse_size("42MB"), 42_000_000);
