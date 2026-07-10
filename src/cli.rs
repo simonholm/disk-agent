@@ -15,8 +15,12 @@ pub struct Cli {
 pub enum Command {
     /// Collect and store today's disk usage snapshot.
     Snapshot,
-    /// Show the latest snapshot.
-    Report,
+    /// Show the latest saved snapshot.
+    Report {
+        /// Collect and save a fresh snapshot before reporting.
+        #[arg(long)]
+        refresh: bool,
+    },
     /// Compare the latest two daily snapshots.
     Diff,
     /// Explain the latest significant changes.

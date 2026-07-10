@@ -25,13 +25,25 @@ pub fn snapshot_paths(directory: &Path) -> Result<Vec<PathBuf>> {
 }
 
 pub fn latest_snapshot_from(directory: &Path) -> Result<Snapshot> {
+    Ok(latest_snapshot_with_path_from(directory)?.snapshot)
+}
+
+pub fn latest_snapshot_with_path_from(directory: &Path) -> Result<LoadedSnapshot> {
     let paths = snapshot_paths(directory)?;
     let Some(path) = paths.last() else {
         return Err(anyhow!(
             "no snapshots found; run 'disk-agent snapshot' first"
         ));
     };
-    load_snapshot(path)
+    Ok(LoadedSnapshot {
+        snapshot: load_snapshot(path)?,
+        path: path.clone(),
+    })
+}
+
+pub struct LoadedSnapshot {
+    pub snapshot: Snapshot,
+    pub path: PathBuf,
 }
 
 pub fn render_report(snapshot: &Snapshot) -> String {
@@ -106,9 +118,25 @@ pub fn render_report(snapshot: &Snapshot) -> String {
     lines.join("\n")
 }
 
-pub fn report_command() -> Result<String> {
+pub fn report_command(refresh: bool) -> Result<String> {
     let directory = paths::snapshot_dir()?;
-    Ok(render_report(&latest_snapshot_from(&directory)?))
+    if refresh {
+        let snapshot = crate::snapshot::collect_snapshot()?;
+        let path = crate::snapshot::save_snapshot(&snapshot, &directory)?;
+        return Ok(render_report_with_metadata(&snapshot, &path));
+    }
+
+    let loaded = latest_snapshot_with_path_from(&directory)?;
+    Ok(render_report_with_metadata(&loaded.snapshot, &loaded.path))
+}
+
+pub fn render_report_with_metadata(snapshot: &Snapshot, path: &Path) -> String {
+    format!(
+        "Snapshot: saved {}\nSource: {}\n\n{}",
+        snapshot.timestamp,
+        path.display(),
+        render_report(snapshot)
+    )
 }
 
 fn top_consumers(snapshot: &Snapshot, limit: usize) -> Vec<&DirectoryUsage> {

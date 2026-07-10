@@ -15,6 +15,7 @@ cargo install --path . --locked
 ```sh
 disk-agent snapshot
 disk-agent report
+disk-agent report --refresh
 disk-agent diff
 disk-agent explain
 disk-agent investigate
@@ -43,6 +44,11 @@ rendering, saved-snapshot diff/explain logic, live snapshot collection, Podman
 usage collection, and live investigation.
 
 Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
+
+`disk-agent report` reads the latest saved snapshot and identifies its timestamp
+and source path in the output. Use `disk-agent report --refresh` to collect and
+save a fresh snapshot before reporting. Snapshots continue to use one file per
+day, so a refreshed report on the same day overwrites that day's snapshot.
 
 Collection is finite and local: filesystem statistics, bounded-depth `du`
 scans, and Podman usage from `podman system df` or rootless Podman storage when

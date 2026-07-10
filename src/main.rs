@@ -20,7 +20,7 @@ fn main() -> ExitCode {
 fn run(command: Command) -> anyhow::Result<String> {
     match command {
         Command::Snapshot => disk_agent::snapshot::snapshot_command(),
-        Command::Report => disk_agent::report::report_command(),
+        Command::Report { refresh } => disk_agent::report::report_command(refresh),
         Command::Diff => disk_agent::diff::diff_command(),
         Command::Explain => disk_agent::explain::explain_command(),
         Command::Investigate => disk_agent::investigate::investigate_command(),
