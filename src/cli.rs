@@ -14,7 +14,11 @@ pub struct Cli {
 #[derive(Debug, Clone, Copy, Subcommand)]
 pub enum Command {
     /// Collect and store today's disk usage snapshot.
-    Snapshot,
+    Snapshot {
+        /// Print each warning that was ignored during collection.
+        #[arg(long)]
+        verbose: bool,
+    },
     /// Show the latest saved snapshot.
     Report {
         /// Collect and save a fresh snapshot before reporting.

@@ -14,6 +14,7 @@ cargo install --path . --locked
 
 ```sh
 disk-agent snapshot
+disk-agent snapshot --verbose
 disk-agent report
 disk-agent report --refresh
 disk-agent diff
@@ -53,7 +54,9 @@ day, so a refreshed report on the same day overwrites that day's snapshot.
 Collection is finite and local: filesystem statistics, bounded-depth `du`
 scans, and Podman usage from `podman system df` or rootless Podman storage when
 the binary is unavailable. Permission errors and unavailable optional paths or
-Podman are recorded without failing the snapshot.
+Podman are recorded without failing the snapshot. If collection ignores any
+warnings, `disk-agent snapshot` reports their count; use
+`disk-agent snapshot --verbose` to print the warning details.
 
 `disk-agent investigate` loads the latest snapshot, collects a fresh read-only
 snapshot, compares the two, classifies significant growth with explicit rules,

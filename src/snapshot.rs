@@ -25,17 +25,31 @@ pub fn save_snapshot(snapshot: &Snapshot, directory: &Path) -> Result<PathBuf> {
     Ok(destination)
 }
 
-pub fn snapshot_command() -> Result<String> {
+pub fn snapshot_command(verbose: bool) -> Result<String> {
     let snapshot = collect_snapshot()?;
     let path = save_snapshot(&snapshot, &paths::snapshot_dir()?)?;
+    Ok(format_snapshot_message(&snapshot, &path, verbose))
+}
+
+fn format_snapshot_message(snapshot: &Snapshot, path: &Path, verbose: bool) -> String {
     let mut message = format!("Snapshot stored: {}", path.display());
     if !snapshot.warnings.is_empty() {
         message.push_str(&format!(
             "\nCompleted with {} ignored warning(s).",
             snapshot.warnings.len()
         ));
+        if verbose {
+            message.push_str("\n\nIgnored warnings:");
+            for warning in &snapshot.warnings {
+                message.push_str(&format!("\n- {warning}"));
+            }
+        } else {
+            message.push_str(
+                "\nHint: re-run with `disk-agent snapshot --verbose` to view the ignored warnings.",
+            );
+        }
     }
-    Ok(message)
+    message
 }
 
 pub fn collect_snapshot() -> Result<Snapshot> {
@@ -83,4 +97,54 @@ fn largest_directories(
         .filter(|usage| usage.path != "~")
         .take(100)
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_snapshot_message;
+    use crate::models::{FilesystemUsage, Snapshot};
+
+    fn snapshot_with_warnings() -> Snapshot {
+        Snapshot {
+            timestamp: "2026-07-11T10:50:00+00:00".to_string(),
+            filesystem: FilesystemUsage {
+                filesystem: "/dev/vda".to_string(),
+                mountpoint: "/".to_string(),
+                total_bytes: 1000,
+                used_bytes: 600,
+                available_bytes: 400,
+                used_percent: 60,
+            },
+            home_usage: Vec::new(),
+            local_share_usage: Vec::new(),
+            copilot_usage: Vec::new(),
+            podman: Default::default(),
+            largest_directories: Vec::new(),
+            warnings: vec![
+                "Permission denied: ~/.private".to_string(),
+                "Path disappeared during scan: ~/gone".to_string(),
+            ],
+            schema_version: 1,
+        }
+    }
+
+    #[test]
+    fn default_snapshot_output_stays_concise() {
+        let snapshot = snapshot_with_warnings();
+        let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), false);
+
+        assert_eq!(
+            output,
+            "Snapshot stored: /tmp/2026-07-11.json\nCompleted with 2 ignored warning(s).\nHint: re-run with `disk-agent snapshot --verbose` to view the ignored warnings."
+        );
+    }
+
+    #[test]
+    fn verbose_snapshot_output_lists_ignored_warnings() {
+        let snapshot = snapshot_with_warnings();
+        let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), true);
+
+        assert!(output.contains("Ignored warnings:\n- Permission denied: ~/.private"));
+        assert!(output.contains("\n- Path disappeared during scan: ~/gone"));
+    }
 }
