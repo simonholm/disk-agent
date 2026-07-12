@@ -1,6 +1,6 @@
 [package]
 name = "disk-agent"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 description = "Bounded, read-only disk usage observer"
 publish = false
