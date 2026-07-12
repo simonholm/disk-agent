@@ -54,9 +54,10 @@ day, so a refreshed report on the same day overwrites that day's snapshot.
 Collection is finite and local: filesystem statistics, bounded-depth `du`
 scans, and Podman usage from `podman system df` or rootless Podman storage when
 the binary is unavailable. Permission errors and unavailable optional paths or
-Podman are recorded without failing the snapshot. If collection ignores any
-warnings, `disk-agent snapshot` reports their count; use
-`disk-agent snapshot --verbose` to print the warning details.
+Podman are recorded without failing the snapshot. Expected `du` permission/read
+warnings are quiet by default; if collection ignores unexpected warnings,
+`disk-agent snapshot` reports their count. Use `disk-agent snapshot --verbose`
+to print all warning details.
 
 `disk-agent investigate` loads the latest snapshot, collects a fresh read-only
 snapshot, compares the two, classifies significant growth with explicit rules,

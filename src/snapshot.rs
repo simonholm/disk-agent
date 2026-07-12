@@ -33,14 +33,23 @@ pub fn snapshot_command(verbose: bool) -> Result<String> {
 
 fn format_snapshot_message(snapshot: &Snapshot, path: &Path, verbose: bool) -> String {
     let mut message = format!("Snapshot stored: {}", path.display());
-    if !snapshot.warnings.is_empty() {
+    let warnings = if verbose {
+        snapshot.warnings.iter().collect::<Vec<_>>()
+    } else {
+        snapshot
+            .warnings
+            .iter()
+            .filter(|warning| !is_expected_warning(warning))
+            .collect::<Vec<_>>()
+    };
+    if !warnings.is_empty() {
         message.push_str(&format!(
             "\nCompleted with {} ignored warning(s).",
-            snapshot.warnings.len()
+            warnings.len()
         ));
         if verbose {
             message.push_str("\n\nIgnored warnings:");
-            for warning in &snapshot.warnings {
+            for warning in warnings {
                 message.push_str(&format!("\n- {warning}"));
             }
         } else {
@@ -50,6 +59,10 @@ fn format_snapshot_message(snapshot: &Snapshot, path: &Path, verbose: bool) -> S
         }
     }
     message
+}
+
+fn is_expected_warning(warning: &str) -> bool {
+    warning.starts_with("du ") && warning.ends_with(": permission or read errors ignored")
 }
 
 pub fn collect_snapshot() -> Result<Snapshot> {
@@ -104,7 +117,7 @@ mod tests {
     use super::format_snapshot_message;
     use crate::models::{FilesystemUsage, Snapshot};
 
-    fn snapshot_with_warnings() -> Snapshot {
+    fn snapshot_with_warnings(warnings: Vec<&str>) -> Snapshot {
         Snapshot {
             timestamp: "2026-07-11T10:50:00+00:00".to_string(),
             filesystem: FilesystemUsage {
@@ -120,31 +133,54 @@ mod tests {
             copilot_usage: Vec::new(),
             podman: Default::default(),
             largest_directories: Vec::new(),
-            warnings: vec![
-                "Permission denied: ~/.private".to_string(),
-                "Path disappeared during scan: ~/gone".to_string(),
-            ],
+            warnings: warnings.into_iter().map(str::to_string).collect(),
             schema_version: 1,
         }
     }
 
     #[test]
-    fn default_snapshot_output_stays_concise() {
-        let snapshot = snapshot_with_warnings();
+    fn default_snapshot_output_omits_warning_report_when_there_are_no_warnings() {
+        let snapshot = snapshot_with_warnings(Vec::new());
+        let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), false);
+
+        assert_eq!(output, "Snapshot stored: /tmp/2026-07-11.json");
+    }
+
+    #[test]
+    fn default_snapshot_output_omits_expected_warnings() {
+        let snapshot = snapshot_with_warnings(vec![
+            "du ~: permission or read errors ignored",
+            "du ~/.local/share: permission or read errors ignored",
+        ]);
+        let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), false);
+
+        assert_eq!(output, "Snapshot stored: /tmp/2026-07-11.json");
+    }
+
+    #[test]
+    fn default_snapshot_output_reports_unexpected_warnings() {
+        let snapshot = snapshot_with_warnings(vec![
+            "du ~: permission or read errors ignored",
+            "Path disappeared during scan: ~/gone",
+        ]);
         let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), false);
 
         assert_eq!(
             output,
-            "Snapshot stored: /tmp/2026-07-11.json\nCompleted with 2 ignored warning(s).\nHint: re-run with `disk-agent snapshot --verbose` to view the ignored warnings."
+            "Snapshot stored: /tmp/2026-07-11.json\nCompleted with 1 ignored warning(s).\nHint: re-run with `disk-agent snapshot --verbose` to view the ignored warnings."
         );
     }
 
     #[test]
     fn verbose_snapshot_output_lists_ignored_warnings() {
-        let snapshot = snapshot_with_warnings();
+        let snapshot = snapshot_with_warnings(vec![
+            "du ~: permission or read errors ignored",
+            "Path disappeared during scan: ~/gone",
+        ]);
         let output = format_snapshot_message(&snapshot, "/tmp/2026-07-11.json".as_ref(), true);
 
-        assert!(output.contains("Ignored warnings:\n- Permission denied: ~/.private"));
+        assert!(output.contains("Completed with 2 ignored warning(s)."));
+        assert!(output.contains("Ignored warnings:\n- du ~: permission or read errors ignored"));
         assert!(output.contains("\n- Path disappeared during scan: ~/gone"));
     }
 }
