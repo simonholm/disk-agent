@@ -1,8 +1,27 @@
 # disk-agent
 
-A small, bounded, read-only Linux disk usage observer. It takes one snapshot per
-invocation, stores at most one JSON snapshot per day, and never deletes or
-modifies user data.
+`disk-agent` is a bounded, read-only Linux disk usage observer. It records daily
+disk usage snapshots, compares recent snapshots, and explains significant
+changes using deterministic rules.
+
+It exists for routine disk triage on a VPS or workstation: show what changed,
+classify likely causes, and provide enough context for a human to decide what to
+inspect next. It observes and explains; it does not clean up, delete, prune, or
+modify the system.
+
+## Philosophy
+
+- Bounded: collection uses finite, local checks and bounded-depth directory
+  scans.
+- Read-only: commands observe filesystem and Podman usage without changing user
+  data.
+- Deterministic: reports and explanations come from saved snapshots and explicit
+  rules, not LLMs or remote services.
+- Daily snapshots: snapshots are stored as one JSON file per day in
+  `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
+- Explain before investigate: start with saved evidence, then collect fresh
+  read-only evidence only when needed.
+- No automatic cleanup: recommendations are informational only.
 
 ## Install
 
@@ -10,26 +29,59 @@ modifies user data.
 cargo install --path . --locked
 ```
 
-## Use
+The installed command should resolve to Cargo's `~/.cargo/bin/disk-agent`:
+
+```sh
+which -a disk-agent
+```
+
+## Commands
+
+```sh
+disk-agent snapshot            # collect and store today's snapshot
+disk-agent snapshot --verbose  # show all ignored collection warnings
+disk-agent report              # summarize the latest saved snapshot
+disk-agent report --refresh    # collect a fresh snapshot, then summarize it
+disk-agent diff                # compare the latest two daily snapshots
+disk-agent explain             # explain significant changes between snapshots
+disk-agent investigate         # collect fresh read-only evidence and assess growth
+```
+
+## Example workflow
 
 ```sh
 disk-agent snapshot
-disk-agent snapshot --verbose
 disk-agent report
-disk-agent report --refresh
 disk-agent diff
 disk-agent explain
 disk-agent investigate
 ```
 
+`snapshot` saves today's baseline. `report` summarizes the latest saved state.
+`diff` shows what changed between the latest two daily snapshots. `explain`
+classifies significant changes when the snapshot data supports it.
+`investigate` compares the latest saved snapshot with fresh read-only evidence
+and prints an operational assessment.
+
+## Safety
+
+`disk-agent` never deletes files, never prunes Podman data, never clears caches,
+and never modifies the filesystem as a cleanup action. It performs bounded
+observation only. Snapshot commands write JSON snapshot files under
+`~/.disk-agent/snapshots/`; diagnostic recommendations remain informational.
+
+## What's new in v0.3.0
+
+- Quieter `snapshot` output: expected `du` permission/read warnings are
+  suppressed by default.
+- `disk-agent snapshot --verbose` still exposes all ignored warning details.
+- Day-to-day use is less noisy while preserving the same read-only collection
+  behavior.
+
 ## Implementation
 
-`disk-agent` is now the Rust implementation. The obsolete Python launcher has
-been removed from `~/.local/bin`; the installed command should resolve to
-Cargo's `~/.cargo/bin/disk-agent`.
-
-The retired Python implementation is kept under `legacy/python/` for historical
-reference only.
+`disk-agent` is the Rust implementation. The retired Python implementation is
+kept under `legacy/python/` for historical reference only.
 
 Validation:
 
@@ -43,8 +95,6 @@ disk-agent report
 The Rust binary supports JSON-compatible snapshot loading and saving, report
 rendering, saved-snapshot diff/explain logic, live snapshot collection, Podman
 usage collection, and live investigation.
-
-Snapshots are stored in `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
 
 `disk-agent report` reads the latest saved snapshot and identifies its timestamp
 and source path in the output. Use `disk-agent report --refresh` to collect and
@@ -62,7 +112,6 @@ to print all warning details.
 `disk-agent investigate` loads the latest snapshot, collects a fresh read-only
 snapshot, compares the two, classifies significant growth with explicit rules,
 and prints an operational assessment with informational recommendations only.
-It never deletes files, prunes Podman, clears caches, or runs cleanup commands.
 
 `disk-agent explain` compares the latest two snapshots and attributes broad
 growth to changed child directories when the snapshot data supports it:
