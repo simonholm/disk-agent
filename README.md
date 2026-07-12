@@ -142,10 +142,3 @@ Podman comparison unavailable.
 Path classification is rule-based and deterministic. Current categories include
 Cache, Rust, Node, Trash, Podman, Downloads, Photos, Media, Development, and
 System logs. Unmatched paths are reported as unclassified.
-
-## Retired Bash scripts
-
-The previous standalone Bash commands, `disk-snapshot` and `disk-report`, have
-been retired in favor of the installed Rust `disk-agent` command. On this VPS
-they are preserved as `~/.local/bin/disk-snapshot.bak` and
-`~/.local/bin/disk-report.bak` for comparison and rollback.
