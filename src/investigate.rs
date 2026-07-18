@@ -5,9 +5,8 @@ use anyhow::{anyhow, Result};
 use crate::classify::{classify_path, is_child_path};
 use crate::diff::compare_snapshots;
 use crate::json::load_snapshot;
-use crate::models::{Snapshot, UsageChange};
+use crate::models::{DirectoryUsage, Snapshot, UsageChange};
 use crate::paths;
-use crate::report::snapshot_paths;
 use crate::rules::{load_rules, Classification};
 use crate::snapshot::{collect_snapshot, save_snapshot};
 
@@ -61,73 +60,93 @@ pub fn cause(change: &UsageChange, classification: &Classification, snapshot: &S
     classification.explanation.clone()
 }
 
-pub fn render_investigation(
-    before: &Snapshot,
-    after: &Snapshot,
-    previous_before: Option<&Snapshot>,
-) -> String {
+pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapshot) -> String {
     let rules = load_rules();
-    let all_changes = compare_snapshots(before, after);
-    let growth = non_overlapping(
-        all_changes
+    let recent_changes = today_baseline
+        .map(|baseline| compare_snapshots(baseline, current))
+        .unwrap_or_default();
+    let recent_increases = non_overlapping(
+        recent_changes
             .into_iter()
             .filter(|change| change.bytes > 0)
             .collect(),
     );
-    let previous_changes = previous_before
-        .map(|previous| compare_snapshots(previous, before))
-        .unwrap_or_default();
-    let repeated = repeated_growth(&growth, &previous_changes);
 
-    let fs = &after.filesystem;
+    let fs = &current.filesystem;
     let mut lines = vec![
+        "Current filesystem usage".to_string(),
+        String::new(),
         format!(
-            "Filesystem usage: {}% ({} of {})",
+            "{} mounted at {}: {}% used ({} of {}, {} available)",
+            fs.filesystem,
+            fs.mountpoint,
             fs.used_percent,
             crate::output::format_bytes(Some(fs.used_bytes), false),
-            crate::output::format_bytes(Some(fs.total_bytes), false)
-        ),
-        format!(
-            "Snapshot interval: {} to {}",
-            &before.timestamp[..10],
-            &after.timestamp[..10]
+            crate::output::format_bytes(Some(fs.total_bytes), false),
+            crate::output::format_bytes(Some(fs.available_bytes), false)
         ),
         String::new(),
-        "Growth:".to_string(),
+        "Largest consumers".to_string(),
         String::new(),
     ];
 
-    if growth.is_empty() {
-        lines.push("No significant growth.".to_string());
+    let largest = largest_consumers(current, 10);
+    if largest.is_empty() {
+        lines.push("No directory usage data collected.".to_string());
     }
-    for change in &growth {
-        let classification = classify_path(&change.path, Some(&rules));
-        lines.extend([
-            format!(
-                "{} {}",
-                crate::output::format_bytes(Some(change.bytes), true),
-                change.path
-            ),
-            classification.classification.clone(),
-            cause(change, &classification, after),
-            format!("Risk: {}", classification.risk),
-        ]);
-        if repeated.contains(&change.path) {
-            lines.push("Repeated growth: yes".to_string());
-        }
+    for usage in &largest {
+        let classification = classify_path(&usage.path, Some(&rules));
+        lines.push(format!(
+            "{} {} ({})",
+            crate::output::format_bytes(Some(usage.bytes), false),
+            usage.path,
+            classification.category
+        ));
+    }
+
+    if today_baseline.is_some() {
         lines.push(String::new());
+        lines.push("Changes since today's snapshot".to_string());
+        lines.push(String::new());
+        if recent_increases.is_empty() {
+            lines.push("No significant same-day increases detected.".to_string());
+        } else {
+            for change in &recent_increases {
+                let classification = classify_path(&change.path, Some(&rules));
+                lines.extend([
+                    format!(
+                        "{} {}",
+                        crate::output::format_bytes(Some(change.bytes), true),
+                        change.path
+                    ),
+                    format!("Classification: {}", classification.classification),
+                    format!("Risk: {}", classification.risk),
+                ]);
+                lines.push(String::new());
+            }
+        }
     }
 
-    lines.push("Podman:".to_string());
-    match (podman_total(before), podman_total(after)) {
-        (Some(old), Some(new)) => lines.push(format!(
-            "Changed by {}.",
-            crate::output::format_bytes(Some(new - old), true)
-        )),
-        _ => lines.push("Comparison unavailable.".to_string()),
+    lines.push(String::new());
+    lines.push("Podman status".to_string());
+    lines.push(String::new());
+    lines.extend(podman_status(today_baseline, current));
+
+    if !current.warnings.is_empty() {
+        lines.extend([
+            String::new(),
+            "Collection warnings".to_string(),
+            String::new(),
+        ]);
+        lines.extend(
+            current
+                .warnings
+                .iter()
+                .map(|warning| format!("- {warning}")),
+        );
     }
 
-    let classifications = growth
+    let classifications = recent_increases
         .iter()
         .map(|change| {
             (
@@ -136,7 +155,19 @@ pub fn render_investigation(
             )
         })
         .collect::<std::collections::HashMap<_, _>>();
-    let assessment = assess(before, after, &growth, &classifications, &repeated);
+    let largest_classifications = largest
+        .iter()
+        .map(|usage| (usage.path.clone(), classify_path(&usage.path, Some(&rules))))
+        .collect::<std::collections::HashMap<_, _>>();
+    let podman_increasing = podman_increased(today_baseline, current);
+    let assessment = assess(
+        current,
+        &recent_increases,
+        &classifications,
+        &largest,
+        &largest_classifications,
+        podman_increasing,
+    );
     lines.extend([
         String::new(),
         "Assessment".to_string(),
@@ -146,38 +177,273 @@ pub fn render_investigation(
         "Recommendations".to_string(),
         String::new(),
     ]);
-    lines.extend(recommendations(&assessment, &growth, &classifications));
+    lines.extend(recommendations(&assessment, &recent_increases, &largest));
     lines.join("\n").trim_end().to_string()
 }
 
 pub fn investigate_command() -> Result<String> {
     let directory = paths::snapshot_dir()?;
-    let baseline_path = latest_snapshot_path(&directory)?;
-    let paths = snapshot_paths(&directory)?;
-    let previous_before = if paths.len() >= 2 {
-        Some(load_snapshot(&paths[paths.len() - 2])?)
-    } else {
-        None
-    };
-    let before = load_snapshot(&baseline_path)?;
-    let after = collect_snapshot()?;
-    let saved = save_if_new_day(&after, &directory)?;
+    let current = collect_snapshot()?;
+    let today_baseline = today_snapshot(&directory, &current)?;
+    let saved = save_if_new_day(&current, &directory)?;
 
-    let report = render_investigation(&before, &after, previous_before.as_ref());
+    let report = render_investigation(today_baseline.as_ref(), &current);
     Ok(match saved {
         None => format!(
-            "{report}\n\nFresh snapshot was collected in memory; today's snapshot file already exists."
+            "{report}\n\nFresh scan completed in memory; today's snapshot file already exists."
         ),
         Some(path) => format!("{report}\n\nSnapshot stored: {}", path.display()),
     })
 }
 
-fn latest_snapshot_path(directory: &Path) -> Result<PathBuf> {
-    let paths = snapshot_paths(directory)?;
-    paths
-        .last()
-        .cloned()
-        .ok_or_else(|| anyhow!("no snapshots found; run 'disk-agent snapshot' first"))
+fn today_snapshot(directory: &Path, current: &Snapshot) -> Result<Option<Snapshot>> {
+    let day = current
+        .timestamp
+        .get(..10)
+        .ok_or_else(|| anyhow!("snapshot timestamp is too short"))?;
+    let path = directory.join(format!("{day}.json"));
+    if path.exists() {
+        Ok(Some(load_snapshot(&path)?))
+    } else {
+        Ok(None)
+    }
+}
+
+fn largest_consumers(snapshot: &Snapshot, limit: usize) -> Vec<DirectoryUsage> {
+    let mut by_path = std::collections::HashMap::new();
+    for usage in snapshot
+        .largest_directories
+        .iter()
+        .chain(snapshot.home_usage.iter())
+        .chain(snapshot.local_share_usage.iter())
+        .chain(snapshot.copilot_usage.iter())
+    {
+        if usage.path != "~" {
+            by_path.insert(usage.path.clone(), usage.clone());
+        }
+    }
+    let mut consumers = by_path.into_values().collect::<Vec<_>>();
+    consumers.sort_by(|left, right| {
+        right
+            .bytes
+            .cmp(&left.bytes)
+            .then_with(|| left.path.cmp(&right.path))
+    });
+    consumers.truncate(limit);
+    consumers
+}
+
+fn podman_status(today_baseline: Option<&Snapshot>, current: &Snapshot) -> Vec<String> {
+    let podman = &current.podman;
+    if !podman.available {
+        return vec![format!(
+            "Unavailable: {}",
+            podman
+                .error
+                .as_deref()
+                .unwrap_or("Podman usage could not be collected")
+        )];
+    }
+
+    let mut lines = vec![
+        format!(
+            "Images: {}",
+            crate::output::format_bytes(podman.images_bytes, false)
+        ),
+        format!(
+            "Containers: {}",
+            crate::output::format_bytes(podman.containers_bytes, false)
+        ),
+        format!(
+            "Volumes: {}",
+            crate::output::format_bytes(podman.volumes_bytes, false)
+        ),
+        format!(
+            "Total: {}",
+            crate::output::format_bytes(podman_total(current), false)
+        ),
+    ];
+
+    if let Some(baseline) = today_baseline {
+        match (podman_total(baseline), podman_total(current)) {
+            (Some(old), Some(new)) => lines.push(format!(
+                "Change since today's snapshot: {}.",
+                crate::output::format_bytes(Some(new - old), true)
+            )),
+            _ => lines.push("Change since today's snapshot: unavailable.".to_string()),
+        }
+    }
+
+    lines
+}
+
+fn podman_increased(today_baseline: Option<&Snapshot>, current: &Snapshot) -> bool {
+    match today_baseline.and_then(|baseline| podman_total(baseline).zip(podman_total(current))) {
+        Some((old, new)) => new - old >= MODERATE_GROWTH_BYTES,
+        None => false,
+    }
+}
+
+pub fn assess(
+    current: &Snapshot,
+    recent_increases: &[UsageChange],
+    classifications: &std::collections::HashMap<String, Classification>,
+    largest: &[DirectoryUsage],
+    largest_classifications: &std::collections::HashMap<String, Classification>,
+    podman_increasing: bool,
+) -> String {
+    let evidence = scan_evidence(
+        current,
+        recent_increases,
+        classifications,
+        largest,
+        largest_classifications,
+        podman_increasing,
+    );
+
+    if evidence.large_unclassified_growth {
+        "Large unclassified growth".to_string()
+    } else if evidence.investigation_recommended {
+        "Investigation recommended".to_string()
+    } else if evidence.container_storage_increasing {
+        "Container storage increasing".to_string()
+    } else if evidence.build_artifacts_accumulating {
+        "Build artifacts accumulating".to_string()
+    } else if evidence.cache_growth_expected {
+        "Cache growth expected".to_string()
+    } else {
+        "Healthy".to_string()
+    }
+}
+
+struct ScanEvidence {
+    large_unclassified_growth: bool,
+    investigation_recommended: bool,
+    container_storage_increasing: bool,
+    build_artifacts_accumulating: bool,
+    cache_growth_expected: bool,
+}
+
+fn scan_evidence(
+    current: &Snapshot,
+    recent_increases: &[UsageChange],
+    classifications: &std::collections::HashMap<String, Classification>,
+    largest: &[DirectoryUsage],
+    largest_classifications: &std::collections::HashMap<String, Classification>,
+    podman_increasing: bool,
+) -> ScanEvidence {
+    let large_unclassified_growth = recent_increases.iter().any(|change| {
+        !classifications[&change.path].known && change.bytes >= MODERATE_GROWTH_BYTES
+    });
+    let largest_recent = recent_increases
+        .iter()
+        .map(|change| change.bytes)
+        .max()
+        .unwrap_or(0);
+    let has_unclassified_change = recent_increases
+        .iter()
+        .any(|change| !classifications[&change.path].known);
+    let container_storage_increasing = podman_increasing
+        || recent_increases
+            .iter()
+            .any(|change| classifications[&change.path].category == "Podman");
+    let build_recent = recent_increases.iter().any(|change| {
+        matches!(
+            classifications[&change.path].category.as_str(),
+            "Development" | "Rust" | "Node"
+        )
+    });
+    let build_artifacts = largest.iter().any(|usage| {
+        matches!(
+            largest_classifications[&usage.path].category.as_str(),
+            "Development" | "Rust" | "Node"
+        ) && usage.bytes >= LARGE_CACHE_BYTES
+    });
+    let cache_recent = recent_increases
+        .iter()
+        .any(|change| classifications[&change.path].category == "Cache");
+    let cache_current = large_known_cache(current)
+        || largest.iter().any(|usage| {
+            largest_classifications[&usage.path].category == "Cache"
+                && usage.bytes >= LARGE_CACHE_BYTES
+        });
+
+    ScanEvidence {
+        large_unclassified_growth,
+        investigation_recommended: current.filesystem.used_percent >= 85
+            || largest_recent >= LARGE_GROWTH_BYTES
+            || has_unclassified_change
+            || !current.warnings.is_empty(),
+        container_storage_increasing,
+        build_artifacts_accumulating: build_recent || build_artifacts,
+        cache_growth_expected: cache_recent || cache_current,
+    }
+}
+
+fn recommendations(
+    assessment: &str,
+    recent_increases: &[UsageChange],
+    largest: &[DirectoryUsage],
+) -> Vec<String> {
+    let mut items = Vec::new();
+    match assessment {
+        "Large unclassified growth" => {
+            if let Some(change) = recent_increases.first() {
+                items.push(format!(
+                    "Inspect {} because it changed by {} and is not classified by current rules.",
+                    change.path,
+                    crate::output::format_bytes(Some(change.bytes), true)
+                ));
+            } else if let Some(usage) = largest.first() {
+                items.push(format!(
+                    "Inspect {} because it is currently the largest observed consumer.",
+                    usage.path
+                ));
+            }
+        }
+        "Investigation recommended" => {
+            if recent_increases.is_empty() {
+                items.push(
+                    "Review the listed directories to determine whether current usage is expected."
+                        .to_string(),
+                );
+            } else {
+                items.push(
+                    "Review the listed directories to determine whether the growth is expected."
+                        .to_string(),
+                );
+            }
+        }
+        "Container storage increasing" => {
+            items.push(
+                "Review Podman images and containers if the growth is unexpected.".to_string(),
+            );
+        }
+        "Build artifacts accumulating" => {
+            items.push(
+                "Consider cleaning build artifacts if they are no longer needed.".to_string(),
+            );
+        }
+        "Cache growth expected" => {
+            items.push("No cleanup required unless disk space becomes constrained.".to_string());
+        }
+        "Healthy" => {}
+        _ => {}
+    }
+
+    if items.is_empty() {
+        items.push("No action required.".to_string());
+    }
+
+    dedupe(items)
+}
+
+fn dedupe(items: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter(|item| seen.insert(item.clone()))
+        .collect()
 }
 
 fn save_if_new_day(snapshot: &Snapshot, directory: &Path) -> Result<Option<PathBuf>> {
@@ -190,79 +456,6 @@ fn save_if_new_day(snapshot: &Snapshot, directory: &Path) -> Result<Option<PathB
         return Ok(None);
     }
     save_snapshot(snapshot, directory).map(Some)
-}
-
-fn repeated_growth(
-    current: &[UsageChange],
-    previous: &[UsageChange],
-) -> std::collections::HashSet<String> {
-    let previous_growth = previous
-        .iter()
-        .filter(|change| change.bytes > 0)
-        .map(|change| change.path.as_str())
-        .collect::<std::collections::HashSet<_>>();
-    current
-        .iter()
-        .filter(|change| change.bytes > 0 && previous_growth.contains(change.path.as_str()))
-        .map(|change| change.path.clone())
-        .collect()
-}
-
-pub fn assess(
-    before: &Snapshot,
-    after: &Snapshot,
-    growth: &[UsageChange],
-    classifications: &std::collections::HashMap<String, Classification>,
-    repeated: &std::collections::HashSet<String>,
-) -> String {
-    let fs = &after.filesystem;
-    let total_growth = after.filesystem.used_bytes - before.filesystem.used_bytes;
-    let unknown_growth = growth
-        .iter()
-        .any(|change| !classifications[&change.path].known);
-    let podman_growth = growth
-        .iter()
-        .any(|change| classifications[&change.path].classification == "Podman storage");
-    let largest_growth = growth.iter().map(|change| change.bytes).max().unwrap_or(0);
-
-    if fs.used_percent >= 90
-        || total_growth >= LARGE_GROWTH_BYTES
-        || largest_growth >= LARGE_GROWTH_BYTES
-        || (unknown_growth && total_growth >= MODERATE_GROWTH_BYTES)
-        || (podman_growth && total_growth >= MODERATE_GROWTH_BYTES)
-    {
-        "Attention Recommended".to_string()
-    } else if fs.used_percent >= 80
-        || !repeated.is_empty()
-        || unknown_growth
-        || large_known_cache(after)
-    {
-        "Monitor".to_string()
-    } else {
-        "Healthy".to_string()
-    }
-}
-
-fn recommendations(
-    assessment: &str,
-    growth: &[UsageChange],
-    classifications: &std::collections::HashMap<String, Classification>,
-) -> Vec<String> {
-    if assessment == "Healthy" && growth.is_empty() {
-        return vec!["No action required.".to_string()];
-    }
-    let mut seen = std::collections::HashSet::new();
-    let mut items = Vec::new();
-    for change in growth {
-        let recommendation = classifications[&change.path].recommendation.clone();
-        if seen.insert(recommendation.clone()) {
-            items.push(recommendation);
-        }
-    }
-    if items.is_empty() {
-        items.push("No action required.".to_string());
-    }
-    items
 }
 
 fn large_known_cache(snapshot: &Snapshot) -> bool {

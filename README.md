@@ -1,8 +1,8 @@
 # disk-agent
 
 `disk-agent` is a bounded, read-only Linux disk usage observer. It records daily
-disk usage snapshots, compares recent snapshots, and explains significant
-changes using deterministic rules.
+disk usage snapshots, compares recent snapshots, explains significant changes,
+and runs live diagnostics using deterministic rules.
 
 It exists for routine disk triage on a VPS or workstation: show what changed,
 classify likely causes, and provide enough context for a human to decide what to
@@ -19,8 +19,8 @@ modify the system.
   rules, not LLMs or remote services.
 - Daily snapshots: snapshots are stored as one JSON file per day in
   `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
-- Explain before investigate: start with saved evidence, then collect fresh
-  read-only evidence only when needed.
+- Separate history from diagnosis: use saved snapshots for historical changes
+  and fresh read-only scans for live investigation.
 - No automatic cleanup: recommendations are informational only.
 
 ## Install
@@ -44,7 +44,7 @@ disk-agent report              # summarize the latest saved snapshot
 disk-agent report --refresh    # collect a fresh snapshot, then summarize it
 disk-agent diff                # compare the latest two daily snapshots
 disk-agent explain             # explain significant changes between snapshots
-disk-agent investigate         # collect fresh read-only evidence and assess growth
+disk-agent investigate         # inspect current disk usage and diagnostic signals
 ```
 
 ## Example workflow
@@ -60,8 +60,10 @@ disk-agent investigate
 `snapshot` saves today's baseline. `report` summarizes the latest saved state.
 `diff` shows what changed between the latest two daily snapshots. `explain`
 classifies significant changes when the snapshot data supports it.
-`investigate` compares the latest saved snapshot with fresh read-only evidence
-and prints an operational assessment.
+`investigate` collects fresh read-only evidence and prints a current-state
+operational assessment. If today's snapshot already exists, it may show
+same-day activity as "Changes since today's snapshot"; historical comparison
+remains the job of `diff`.
 
 ## Safety
 
@@ -109,9 +111,11 @@ warnings are quiet by default; if collection ignores unexpected warnings,
 `disk-agent snapshot` reports their count. Use `disk-agent snapshot --verbose`
 to print all warning details.
 
-`disk-agent investigate` loads the latest snapshot, collects a fresh read-only
-snapshot, compares the two, classifies significant growth with explicit rules,
-and prints an operational assessment with informational recommendations only.
+`disk-agent investigate` collects a fresh read-only snapshot, reports current
+filesystem usage, largest consumers, same-day activity when detectable, Podman
+status, an assessment, and informational recommendations. It may use today's
+saved snapshot as a same-day baseline, but it does not present itself as a
+historical snapshot comparison.
 
 `disk-agent explain` compares the latest two snapshots and attributes broad
 growth to changed child directories when the snapshot data supports it:
