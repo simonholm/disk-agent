@@ -1,4 +1,5 @@
-use disk_agent::explain::render_explanation;
+use disk_agent::codex::{CodexRelease, CodexStandalone};
+use disk_agent::explain::{render_explanation, render_explanation_with_codex};
 use disk_agent::models::{DirectoryUsage, FilesystemUsage, Snapshot};
 
 const MIB: i64 = 1024 * 1024;
@@ -79,4 +80,76 @@ fn explain_reports_unknown_when_contributors_are_unclassified() {
     assert!(output.contains("Growth occurred in unclassified locations."));
     assert!(output.contains("Risk:\nUnknown"));
     assert!(output.contains("Inspect unclassified locations before taking cleanup action."));
+}
+
+#[test]
+fn explain_uses_codex_runtime_retention_knowledge() {
+    let before = sample(18, 66, vec![("~", 0), ("~/.codex", 0)]);
+    let after = sample(
+        19,
+        69,
+        vec![("~", 3 * 1024 * MIB), ("~/.codex", 3 * 1024 * MIB)],
+    );
+    let codex = CodexStandalone {
+        current_release: Some("0.145.0".to_string()),
+        releases: vec![
+            CodexRelease {
+                name: "0.144.6".to_string(),
+                bytes: 1024,
+            },
+            CodexRelease {
+                name: "0.145.0".to_string(),
+                bytes: 2048,
+            },
+        ],
+    };
+
+    let output = render_explanation_with_codex(&before, &after, Some(&codex));
+
+    assert!(output.contains("Growth is primarily due to Application releases (+3G)."));
+    assert!(output.contains("Risk:\nLow"));
+    assert!(output.contains("Review retained Codex releases."));
+    assert!(!output.contains("Growth occurred in unclassified locations."));
+    assert!(!output.contains("Inspect unclassified locations before taking cleanup action."));
+}
+
+#[test]
+fn explain_omits_stale_unclassified_recommendation_for_small_residual_growth() {
+    let before = sample(
+        18,
+        66,
+        vec![("~", 0), ("~/.copilot", 0), ("~/.codex", 0), ("~/other", 0)],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 1050 * MIB),
+            ("~/.copilot", 570 * MIB),
+            ("~/.codex", 358 * MIB),
+            ("~/other", 122 * MIB),
+        ],
+    );
+    let codex = CodexStandalone {
+        current_release: Some("0.145.0".to_string()),
+        releases: vec![
+            CodexRelease {
+                name: "0.144.6".to_string(),
+                bytes: 1024,
+            },
+            CodexRelease {
+                name: "0.145.0".to_string(),
+                bytes: 2048,
+            },
+        ],
+    };
+
+    let output = render_explanation_with_codex(&before, &after, Some(&codex));
+
+    assert!(output.contains(
+        "Growth is primarily due to Application runtime (+570M) and Application releases (+358M)."
+    ));
+    assert!(output.contains("Review the Copilot installation only if the growth is unexpected."));
+    assert!(output.contains("Review retained Codex releases."));
+    assert!(!output.contains("Inspect unclassified locations before taking cleanup action."));
 }

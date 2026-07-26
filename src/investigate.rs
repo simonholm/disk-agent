@@ -109,7 +109,7 @@ pub fn render_investigation_with_codex(
             "{} {} ({})",
             crate::output::format_bytes(Some(usage.bytes), false),
             usage.path,
-            classification.category
+            largest_consumer_label(usage, &largest, &classification)
         ));
     }
 
@@ -138,7 +138,7 @@ pub fn render_investigation_with_codex(
 
     let codex_runtime_changed = codex_standalone
         .filter(|codex| codex.releases.len() > 1)
-        .is_some_and(|_| recent_increases.iter().any(is_codex_package_change));
+        .is_some_and(|_| recent_increases.iter().any(is_codex_runtime_change));
 
     lines.push(String::new());
     lines.push("Podman status".to_string());
@@ -169,7 +169,7 @@ pub fn render_investigation_with_codex(
 
     let assessment_increases = recent_increases
         .iter()
-        .filter(|change| !(codex_runtime_changed && is_codex_package_change(change)))
+        .filter(|change| !(codex_runtime_changed && is_codex_runtime_change(change)))
         .cloned()
         .collect::<Vec<_>>();
     let classifications = assessment_increases
@@ -186,7 +186,7 @@ pub fn render_investigation_with_codex(
         .map(|usage| (usage.path.clone(), classify_path(&usage.path, Some(&rules))))
         .collect::<std::collections::HashMap<_, _>>();
     let podman_increasing = podman_increased(today_baseline, current);
-    let assessment = assess(
+    let mut assessment = assess(
         current,
         &assessment_increases,
         &classifications,
@@ -194,6 +194,13 @@ pub fn render_investigation_with_codex(
         &largest_classifications,
         podman_increasing,
     );
+    if codex_runtime_changed
+        && assessment_increases.is_empty()
+        && current.warnings.is_empty()
+        && assessment == "Investigation recommended"
+    {
+        assessment = "Healthy".to_string();
+    }
     lines.extend([
         String::new(),
         "Assessment".to_string(),
@@ -266,6 +273,28 @@ fn largest_consumers(snapshot: &Snapshot, limit: usize) -> Vec<DirectoryUsage> {
     });
     consumers.truncate(limit);
     consumers
+}
+
+fn largest_consumer_label(
+    usage: &DirectoryUsage,
+    largest: &[DirectoryUsage],
+    classification: &Classification,
+) -> String {
+    if classification.known {
+        return classification.category.clone();
+    }
+
+    let rules = load_rules();
+    let has_dominant_known_child = largest.iter().any(|child| {
+        is_child_path(&child.path, &usage.path)
+            && child.bytes >= usage.bytes / 2
+            && classify_path(&child.path, Some(&rules)).known
+    });
+    if has_dominant_known_child {
+        "Mixed".to_string()
+    } else {
+        classification.category.clone()
+    }
 }
 
 fn podman_status(today_baseline: Option<&Snapshot>, current: &Snapshot) -> Vec<String> {
@@ -352,8 +381,10 @@ fn codex_standalone_status(
     lines
 }
 
-fn is_codex_package_change(change: &UsageChange) -> bool {
-    change.path == "~/.codex/packages" || change.path.starts_with("~/.codex/packages/")
+fn is_codex_runtime_change(change: &UsageChange) -> bool {
+    change.path == "~/.codex"
+        || change.path == "~/.codex/packages"
+        || change.path.starts_with("~/.codex/packages/")
 }
 
 pub fn assess(
@@ -415,15 +446,21 @@ fn scan_evidence(
     let has_unclassified_change = recent_increases
         .iter()
         .any(|change| !classifications[&change.path].known);
+    let low_risk_classified_recent = !recent_increases.is_empty()
+        && recent_increases.iter().all(|change| {
+            let classification = &classifications[&change.path];
+            classification.known && classification.risk == "Low"
+        });
     let container_storage_increasing = podman_increasing
         || recent_increases
             .iter()
             .any(|change| classifications[&change.path].category == "Podman");
     let build_recent = recent_increases.iter().any(|change| {
-        matches!(
-            classifications[&change.path].category.as_str(),
-            "Development" | "Rust" | "Node"
-        )
+        change.bytes >= MODERATE_GROWTH_BYTES
+            && matches!(
+                classifications[&change.path].category.as_str(),
+                "Development" | "Rust" | "Node"
+            )
     });
     let build_artifacts = largest.iter().any(|usage| {
         matches!(
@@ -442,10 +479,11 @@ fn scan_evidence(
 
     ScanEvidence {
         large_unclassified_growth,
-        investigation_recommended: current.filesystem.used_percent >= 85
-            || largest_recent >= LARGE_GROWTH_BYTES
-            || has_unclassified_change
-            || !current.warnings.is_empty(),
+        investigation_recommended: !low_risk_classified_recent
+            && (current.filesystem.used_percent >= 85
+                || largest_recent >= LARGE_GROWTH_BYTES
+                || has_unclassified_change
+                || !current.warnings.is_empty()),
         container_storage_increasing,
         build_artifacts_accumulating: build_recent || build_artifacts,
         cache_growth_expected: cache_recent || cache_current,

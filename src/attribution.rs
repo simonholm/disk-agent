@@ -148,9 +148,25 @@ pub fn recommendations(classifications: &[(UsageChange, Classification)]) -> Vec
         return vec!["No cleanup is currently required.".to_string()];
     }
 
+    let known_bytes = classifications
+        .iter()
+        .filter(|(_, classification)| classification.known)
+        .map(|(change, _)| change.bytes)
+        .sum::<i64>();
+    let unclassified_bytes = classifications
+        .iter()
+        .filter(|(_, classification)| !classification.known)
+        .map(|(change, _)| change.bytes)
+        .sum::<i64>();
+    let meaningful_unclassified = unclassified_bytes > 0
+        && (known_bytes == 0 || unclassified_bytes >= LARGE_CATEGORY_GROWTH_BYTES);
+
     let mut seen = BTreeSet::new();
     let mut items = Vec::new();
-    for (_, classification) in classifications {
+    for (_, classification) in classifications
+        .iter()
+        .filter(|(_, classification)| classification.known || meaningful_unclassified)
+    {
         let recommendation = recommendation_for_category(classification);
         if seen.insert(recommendation.clone()) {
             items.push(recommendation);

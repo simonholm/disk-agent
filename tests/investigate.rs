@@ -88,6 +88,7 @@ fn investigation_reads_like_operational_report() {
     assert!(output.contains("Current filesystem usage"));
     assert!(output.contains("/dev/vda mounted at /: 62% used"));
     assert!(output.contains("Largest consumers"));
+    assert!(output.contains("950M ~/.codex (Mixed)"));
     assert!(!output.contains("Recently active areas"));
     assert!(output.contains("Changes since today's snapshot"));
     assert!(output.contains("Podman status"));
@@ -167,7 +168,7 @@ fn investigation_reports_codex_runtime_update_without_generic_investigation_pres
         path: "~/.codex/packages".to_string(),
         bytes: 300 * 1024 * 1024,
     });
-    let mut after = sample(19, 62, 0);
+    let mut after = sample(19, 86, 0);
     after.home_usage.push(DirectoryUsage {
         path: "~/.codex/packages".to_string(),
         bytes: 6 * 1024_i64.pow(3),
@@ -199,6 +200,30 @@ fn investigation_reports_codex_runtime_update_without_generic_investigation_pres
     assert!(output.contains("Runtime storage: 5G"));
     assert!(output.contains("Old releases: 2G"));
     assert_eq!(assessment_line(&output), "Healthy");
+    assert!(!output
+        .contains("Review the listed directories to determine whether the growth is expected."));
+}
+
+#[test]
+fn low_risk_classified_same_day_growth_does_not_force_investigation() {
+    let before = sample(19, 84, 0);
+    let mut after = sample(19, 86, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/labs".to_string(),
+        bytes: 487 * 1024 * 1024,
+    });
+    after.largest_directories.push(DirectoryUsage {
+        path: "~/labs".to_string(),
+        bytes: 487 * 1024 * 1024,
+    });
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(output.contains("+487M ~/labs"));
+    assert!(output.contains("Classification: Development"));
+    assert!(output.contains("Risk: Low"));
+    assert_eq!(assessment_line(&output), "Healthy");
+    assert!(output.contains("No action required."));
     assert!(!output
         .contains("Review the listed directories to determine whether the growth is expected."));
 }
