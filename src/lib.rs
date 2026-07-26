@@ -1,6 +1,7 @@
 pub mod attribution;
 pub mod classify;
 pub mod cli;
+pub mod codex;
 pub mod command;
 pub mod diff;
 pub mod errors;

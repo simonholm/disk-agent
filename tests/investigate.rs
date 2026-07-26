@@ -1,5 +1,6 @@
 use disk_agent::classify::classify_path;
-use disk_agent::investigate::{assess, render_investigation};
+use disk_agent::codex::{CodexRelease, CodexStandalone};
+use disk_agent::investigate::{assess, render_investigation, render_investigation_with_codex};
 use disk_agent::models::{DirectoryUsage, FilesystemUsage, PodmanUsage, Snapshot, UsageChange};
 use disk_agent::rules::load_rules;
 
@@ -111,6 +112,95 @@ fn investigation_omits_change_section_without_same_day_snapshot() {
     assert!(!output.contains("Changes since today's snapshot"));
     assert!(output.contains("Current filesystem usage"));
     assert!(output.contains("Assessment"));
+}
+
+#[test]
+fn investigation_omits_codex_section_for_one_standalone_release() {
+    let codex = CodexStandalone {
+        current_release: Some("0.144.6".to_string()),
+        releases: vec![CodexRelease {
+            name: "0.144.6".to_string(),
+            bytes: 10,
+        }],
+    };
+
+    let output = render_investigation_with_codex(None, &sample(19, 62, 0), Some(&codex));
+
+    assert!(!output.contains("Codex\n"));
+}
+
+#[test]
+fn investigation_reports_multiple_codex_standalone_releases() {
+    let codex = CodexStandalone {
+        current_release: Some("0.144.6".to_string()),
+        releases: vec![
+            CodexRelease {
+                name: "0.144.5".to_string(),
+                bytes: 1024,
+            },
+            CodexRelease {
+                name: "0.144.6".to_string(),
+                bytes: 2048,
+            },
+        ],
+    };
+
+    let output = render_investigation_with_codex(None, &sample(19, 62, 0), Some(&codex));
+
+    assert!(output.contains("Codex"));
+    assert!(output.contains("Current release: 0.144.6"));
+    assert!(output.contains("Installed releases: 2"));
+    assert!(output.contains("Runtime storage: 3K"));
+    assert!(output.contains("Old releases: 1K"));
+    assert!(output.contains(
+        "Retention policy: Unknown; upstream standalone updater currently does not prune releases."
+    ));
+    assert!(!output.contains("delete"));
+    assert!(!output.contains("reclaim"));
+    assert!(!output.contains("safe to remove"));
+}
+
+#[test]
+fn investigation_reports_codex_runtime_update_without_generic_investigation_pressure() {
+    let mut before = sample(19, 60, 0);
+    before.home_usage.push(DirectoryUsage {
+        path: "~/.codex/packages".to_string(),
+        bytes: 300 * 1024 * 1024,
+    });
+    let mut after = sample(19, 62, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/.codex/packages".to_string(),
+        bytes: 6 * 1024_i64.pow(3),
+    });
+    after.largest_directories.push(DirectoryUsage {
+        path: "~/.codex/packages".to_string(),
+        bytes: 6 * 1024_i64.pow(3),
+    });
+    let codex = CodexStandalone {
+        current_release: Some("0.145.0".to_string()),
+        releases: vec![
+            CodexRelease {
+                name: "0.144.6".to_string(),
+                bytes: 2 * 1024_i64.pow(3),
+            },
+            CodexRelease {
+                name: "0.145.0".to_string(),
+                bytes: 3 * 1024_i64.pow(3),
+            },
+        ],
+    };
+
+    let output = render_investigation_with_codex(Some(&before), &after, Some(&codex));
+
+    assert!(output.contains("+5.7G ~/.codex/packages"));
+    assert!(output.contains("New runtime installed: 0.145.0"));
+    assert!(output.contains("Current release: 0.145.0"));
+    assert!(output.contains("Installed releases: 2"));
+    assert!(output.contains("Runtime storage: 5G"));
+    assert!(output.contains("Old releases: 2G"));
+    assert_eq!(assessment_line(&output), "Healthy");
+    assert!(!output
+        .contains("Review the listed directories to determine whether the growth is expected."));
 }
 
 #[test]

@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use anyhow::{anyhow, Result};
 
 use crate::classify::{classify_path, is_child_path};
+use crate::codex::{detect_codex_standalone, CodexStandalone};
 use crate::diff::compare_snapshots;
 use crate::json::load_snapshot;
 use crate::models::{DirectoryUsage, Snapshot, UsageChange};
@@ -61,6 +62,14 @@ pub fn cause(change: &UsageChange, classification: &Classification, snapshot: &S
 }
 
 pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapshot) -> String {
+    render_investigation_with_codex(today_baseline, current, None)
+}
+
+pub fn render_investigation_with_codex(
+    today_baseline: Option<&Snapshot>,
+    current: &Snapshot,
+    codex_standalone: Option<&CodexStandalone>,
+) -> String {
     let rules = load_rules();
     let recent_changes = today_baseline
         .map(|baseline| compare_snapshots(baseline, current))
@@ -127,10 +136,22 @@ pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapsho
         }
     }
 
+    let codex_runtime_changed = codex_standalone
+        .filter(|codex| codex.releases.len() > 1)
+        .is_some_and(|_| recent_increases.iter().any(is_codex_package_change));
+
     lines.push(String::new());
     lines.push("Podman status".to_string());
     lines.push(String::new());
     lines.extend(podman_status(today_baseline, current));
+
+    if let Some(codex_standalone) = codex_standalone.filter(|codex| codex.releases.len() > 1) {
+        lines.extend([String::new(), "Codex".to_string(), String::new()]);
+        lines.extend(codex_standalone_status(
+            codex_standalone,
+            codex_runtime_changed,
+        ));
+    }
 
     if !current.warnings.is_empty() {
         lines.extend([
@@ -146,7 +167,12 @@ pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapsho
         );
     }
 
-    let classifications = recent_increases
+    let assessment_increases = recent_increases
+        .iter()
+        .filter(|change| !(codex_runtime_changed && is_codex_package_change(change)))
+        .cloned()
+        .collect::<Vec<_>>();
+    let classifications = assessment_increases
         .iter()
         .map(|change| {
             (
@@ -162,7 +188,7 @@ pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapsho
     let podman_increasing = podman_increased(today_baseline, current);
     let assessment = assess(
         current,
-        &recent_increases,
+        &assessment_increases,
         &classifications,
         &largest,
         &largest_classifications,
@@ -177,7 +203,11 @@ pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapsho
         "Recommendations".to_string(),
         String::new(),
     ]);
-    lines.extend(recommendations(&assessment, &recent_increases, &largest));
+    lines.extend(recommendations(
+        &assessment,
+        &assessment_increases,
+        &largest,
+    ));
     lines.join("\n").trim_end().to_string()
 }
 
@@ -186,8 +216,13 @@ pub fn investigate_command() -> Result<String> {
     let current = collect_snapshot()?;
     let today_baseline = today_snapshot(&directory, &current)?;
     let saved = save_if_new_day(&current, &directory)?;
+    let codex_standalone = detect_codex_standalone()?;
 
-    let report = render_investigation(today_baseline.as_ref(), &current);
+    let report = render_investigation_with_codex(
+        today_baseline.as_ref(),
+        &current,
+        codex_standalone.as_ref(),
+    );
     Ok(match saved {
         None => format!(
             "{report}\n\nFresh scan completed in memory; today's snapshot file already exists."
@@ -282,6 +317,43 @@ fn podman_increased(today_baseline: Option<&Snapshot>, current: &Snapshot) -> bo
         Some((old, new)) => new - old >= MODERATE_GROWTH_BYTES,
         None => false,
     }
+}
+
+fn codex_standalone_status(
+    codex_standalone: &CodexStandalone,
+    runtime_changed: bool,
+) -> Vec<String> {
+    let mut lines = Vec::new();
+    if runtime_changed {
+        if let Some(current_release) = codex_standalone.current_release.as_deref() {
+            lines.push(format!("New runtime installed: {current_release}"));
+        }
+    }
+    lines.extend([
+        format!(
+            "Current release: {}",
+            codex_standalone
+                .current_release
+                .as_deref()
+                .unwrap_or("unavailable")
+        ),
+        format!("Installed releases: {}", codex_standalone.releases.len()),
+        format!(
+            "Runtime storage: {}",
+            crate::output::format_bytes(Some(codex_standalone.total_storage_bytes()), false)
+        ),
+        format!(
+            "Old releases: {}",
+            crate::output::format_bytes(Some(codex_standalone.inactive_storage_bytes()), false)
+        ),
+        "Retention policy: Unknown; upstream standalone updater currently does not prune releases."
+            .to_string(),
+    ]);
+    lines
+}
+
+fn is_codex_package_change(change: &UsageChange) -> bool {
+    change.path == "~/.codex/packages" || change.path.starts_with("~/.codex/packages/")
 }
 
 pub fn assess(
