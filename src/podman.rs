@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde_json::Value;
 
 use crate::command::{CommandRunner, SystemCommandRunner};
-use crate::models::PodmanUsage;
+use crate::models::{PodmanContainerUsage, PodmanUsage};
 use crate::paths;
 
 pub fn collect_podman() -> Result<PodmanUsage> {
@@ -69,8 +69,73 @@ pub fn collect_podman_with_runner(
         images_bytes: Some(images),
         containers_bytes: Some(containers),
         volumes_bytes: Some(volumes),
+        containers: collect_container_usage(runner),
         error: None,
     }
+}
+
+fn collect_container_usage(runner: &dyn CommandRunner) -> Vec<PodmanContainerUsage> {
+    let Ok(output) = runner.run(&["podman", "ps", "--all", "--size", "--format", "{{json .}}"])
+    else {
+        return Vec::new();
+    };
+    if output.status != 0 {
+        return Vec::new();
+    }
+
+    let mut containers = Vec::new();
+    for line in output.stdout.lines() {
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let Some(name) = container_name(&row) else {
+            continue;
+        };
+        let bytes = container_writable_size(&row);
+        if bytes > 0 {
+            containers.push(PodmanContainerUsage { name, bytes });
+        }
+    }
+    containers.sort_by(|left, right| {
+        right
+            .bytes
+            .cmp(&left.bytes)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    containers
+}
+
+fn container_name(row: &Value) -> Option<String> {
+    for key in ["Names", "Name"] {
+        match row.get(key) {
+            Some(Value::String(name)) if !name.trim().is_empty() => {
+                return Some(name.trim().to_string());
+            }
+            Some(Value::Array(names)) => {
+                if let Some(name) = names
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .find(|name| !name.trim().is_empty())
+                {
+                    return Some(name.trim().to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+fn container_writable_size(row: &Value) -> i64 {
+    match row.get("Size") {
+        Some(Value::Object(size)) => size.get("rwSize").and_then(Value::as_i64).unwrap_or(0),
+        Some(Value::String(value)) => parse_container_size(value),
+        _ => 0,
+    }
+}
+
+fn parse_container_size(value: &str) -> i64 {
+    parse_size(value.split('(').next().unwrap_or(value).trim())
 }
 
 fn collect_podman_storage_with_runner(runner: &dyn CommandRunner, home: &Path) -> PodmanUsage {
@@ -97,6 +162,7 @@ fn collect_podman_storage_with_runner(runner: &dyn CommandRunner, home: &Path) -
         images_bytes: Some(images.unwrap_or(0)),
         containers_bytes: Some(containers.unwrap_or(0)),
         volumes_bytes: Some(volumes.unwrap_or(0)),
+        containers: Vec::new(),
         error: had_errors.then(|| "podman storage had unreadable paths".to_string()),
     }
 }

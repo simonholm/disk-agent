@@ -1,7 +1,9 @@
 use disk_agent::classify::classify_path;
 use disk_agent::codex::{CodexRelease, CodexStandalone};
 use disk_agent::investigate::{assess, render_investigation, render_investigation_with_codex};
-use disk_agent::models::{DirectoryUsage, FilesystemUsage, PodmanUsage, Snapshot, UsageChange};
+use disk_agent::models::{
+    DirectoryUsage, FilesystemUsage, PodmanContainerUsage, PodmanUsage, Snapshot, UsageChange,
+};
 use disk_agent::rules::load_rules;
 
 const SUPPORTED_ASSESSMENTS: &[&str] = &[
@@ -246,6 +248,7 @@ fn container_assessment_has_container_recommendation() {
         images_bytes: Some(0),
         containers_bytes: Some(0),
         volumes_bytes: Some(0),
+        containers: Vec::new(),
         error: None,
     };
     let mut after = sample(19, 62, 0);
@@ -254,6 +257,7 @@ fn container_assessment_has_container_recommendation() {
         images_bytes: Some(2 * 1024_i64.pow(3)),
         containers_bytes: Some(0),
         volumes_bytes: Some(0),
+        containers: Vec::new(),
         error: None,
     };
 
@@ -262,6 +266,37 @@ fn container_assessment_has_container_recommendation() {
     assert_eq!(assessment_line(&output), "Container storage increasing");
     assert!(output.contains("Review Podman images and containers if the growth is unexpected."));
     assert!(!output.contains("No action required."));
+}
+
+#[test]
+fn podman_status_attributes_significant_container_storage_without_cleanup_claim() {
+    let mut after = sample(19, 62, 0);
+    after.podman = PodmanUsage {
+        available: true,
+        images_bytes: Some(100 * 1024 * 1024),
+        containers_bytes: Some(2_330_000_000),
+        volumes_bytes: Some(0),
+        containers: vec![
+            PodmanContainerUsage {
+                name: "archbox".to_string(),
+                bytes: 2_290_000_000,
+            },
+            PodmanContainerUsage {
+                name: "small".to_string(),
+                bytes: 10 * 1024 * 1024,
+            },
+        ],
+        error: None,
+    };
+
+    let output = render_investigation(None, &after);
+
+    assert!(output.contains("Containers: 2.2G"));
+    assert!(output.contains("Notable containers:"));
+    assert!(output.contains("archbox: 2.1G writable layer"));
+    assert!(!output.contains("small:"));
+    assert!(!output.contains("reclaim"));
+    assert!(!output.contains("safe to remove"));
 }
 
 #[test]

@@ -10,6 +10,9 @@ fn reads_snapshot_with_all_current_fields() {
     assert_eq!(snapshot.home_usage.len(), 3);
     assert!(snapshot.podman.available);
     assert_eq!(snapshot.podman.images_bytes, Some(100));
+    assert_eq!(snapshot.podman.containers.len(), 1);
+    assert_eq!(snapshot.podman.containers[0].name, "archbox");
+    assert_eq!(snapshot.podman.containers[0].bytes, 200);
 }
 
 #[test]
@@ -24,4 +27,5 @@ fn defaults_missing_optional_snapshot_fields() {
     assert!(snapshot.warnings.is_empty());
     assert!(!snapshot.podman.available);
     assert_eq!(snapshot.podman.images_bytes, None);
+    assert!(snapshot.podman.containers.is_empty());
 }

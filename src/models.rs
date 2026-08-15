@@ -27,7 +27,15 @@ pub struct PodmanUsage {
     #[serde(default)]
     pub volumes_bytes: Option<i64>,
     #[serde(default)]
+    pub containers: Vec<PodmanContainerUsage>,
+    #[serde(default)]
     pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PodmanContainerUsage {
+    pub name: String,
+    pub bytes: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

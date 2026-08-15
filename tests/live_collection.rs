@@ -111,6 +111,36 @@ fn podman_collection_parses_system_df_json_lines() {
 }
 
 #[test]
+fn podman_collection_parses_container_writable_sizes() {
+    let runner = FakeRunner::new(vec![
+        (
+            "podman system df --format {{json .}}",
+            output(
+                "{\"Type\":\"Images\",\"Size\":\"1.5GB\"}\n{\"Type\":\"Containers\",\"Size\":\"2.5GB\"}\n{\"Type\":\"Local Volumes\",\"Size\":\"0B\"}\n",
+                "",
+                0,
+            ),
+        ),
+        (
+            "podman ps --all --size --format {{json .}}",
+            output(
+                "{\"Names\":[\"archbox\"],\"Size\":{\"rootFsSize\":2734569789,\"rwSize\":2330134634}}\n{\"Names\":[\"sidecar\"],\"Size\":{\"rootFsSize\":900000000,\"rwSize\":10000000}}\n{\"Names\":[\"empty\"],\"Size\":null}\n",
+                "",
+                0,
+            ),
+        ),
+    ]);
+
+    let usage = collect_podman_with_runner(&runner, Path::new("/unused"), true);
+
+    assert_eq!(usage.containers.len(), 2);
+    assert_eq!(usage.containers[0].name, "archbox");
+    assert_eq!(usage.containers[0].bytes, 2_330_134_634);
+    assert_eq!(usage.containers[1].name, "sidecar");
+    assert_eq!(usage.containers[1].bytes, 10_000_000);
+}
+
+#[test]
 fn podman_collection_uses_rootless_storage_when_binary_is_absent() {
     let directory = tempfile::tempdir().unwrap();
     let storage = directory

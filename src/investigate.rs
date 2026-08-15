@@ -14,6 +14,7 @@ use crate::snapshot::{collect_snapshot, save_snapshot};
 pub const LARGE_CACHE_BYTES: i64 = 2 * 1024_i64.pow(3);
 pub const LARGE_GROWTH_BYTES: i64 = 5 * 1024_i64.pow(3);
 pub const MODERATE_GROWTH_BYTES: i64 = 1024_i64.pow(3);
+const SIGNIFICANT_CONTAINER_BYTES: i64 = 50 * 1024_i64.pow(2);
 
 pub fn non_overlapping(changes: Vec<UsageChange>) -> Vec<UsageChange> {
     let rules = load_rules();
@@ -338,7 +339,35 @@ fn podman_status(today_baseline: Option<&Snapshot>, current: &Snapshot) -> Vec<S
         }
     }
 
+    let notable = notable_containers(current);
+    if !notable.is_empty() {
+        lines.push("Notable containers:".to_string());
+        lines.extend(notable.into_iter().map(|container| {
+            format!(
+                "{}: {} writable layer",
+                container.name,
+                crate::output::format_bytes(Some(container.bytes), false)
+            )
+        }));
+    }
+
     lines
+}
+
+fn notable_containers(current: &Snapshot) -> Vec<&crate::models::PodmanContainerUsage> {
+    let total = current.podman.containers_bytes.unwrap_or(0);
+    if total < SIGNIFICANT_CONTAINER_BYTES {
+        return Vec::new();
+    }
+    current
+        .podman
+        .containers
+        .iter()
+        .filter(|container| {
+            container.bytes >= SIGNIFICANT_CONTAINER_BYTES && container.bytes >= total / 10
+        })
+        .take(5)
+        .collect()
 }
 
 fn podman_increased(today_baseline: Option<&Snapshot>, current: &Snapshot) -> bool {

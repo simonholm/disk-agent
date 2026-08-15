@@ -35,6 +35,12 @@
   "local_share_usage": [],
   "podman": {
     "available": true,
+    "containers": [
+      {
+        "bytes": 200,
+        "name": "archbox"
+      }
+    ],
     "containers_bytes": 200,
     "images_bytes": 100,
     "volumes_bytes": 300
