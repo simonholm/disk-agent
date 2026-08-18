@@ -153,3 +153,37 @@ fn explain_omits_stale_unclassified_recommendation_for_small_residual_growth() {
     assert!(output.contains("Review retained Codex releases."));
     assert!(!output.contains("Inspect unclassified locations before taking cleanup action."));
 }
+
+#[test]
+fn explain_reports_low_risk_for_classified_rust_and_node_growth() {
+    let before = sample(
+        18,
+        59,
+        vec![
+            ("~", 0),
+            ("~/.cargo-target", 0),
+            ("~/.nvm/versions", 0),
+            ("~/.npm", 0),
+        ],
+    );
+    let after = sample(
+        19,
+        61,
+        vec![
+            ("~", 1105 * MIB),
+            ("~/.cargo-target", 565 * MIB),
+            ("~/.nvm/versions", 350 * MIB),
+            ("~/.npm", 190 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("  +565M ~/.cargo-target"));
+    assert!(output.contains("  +350M ~/.nvm/versions"));
+    assert!(output.contains("  +190M ~/.npm"));
+    assert!(output.contains("Growth is primarily due to Rust (+565M) and Node (+540M)."));
+    assert!(output.contains("Risk:\nLow"));
+    assert!(!output.contains("Risk:\nUnknown"));
+    assert!(!output.contains("unclassified locations"));
+}

@@ -231,6 +231,67 @@ fn low_risk_classified_same_day_growth_does_not_force_investigation() {
 }
 
 #[test]
+fn partial_du_warnings_do_not_force_investigation_when_disk_pressure_is_low() {
+    let before = sample(19, 59, 0);
+    let mut after = sample(19, 61, 0);
+    after.home_usage.extend([
+        DirectoryUsage {
+            path: "~/.cargo-target".to_string(),
+            bytes: 565 * 1024 * 1024,
+        },
+        DirectoryUsage {
+            path: "~/.nvm/versions".to_string(),
+            bytes: 350 * 1024 * 1024,
+        },
+        DirectoryUsage {
+            path: "~/.npm".to_string(),
+            bytes: 190 * 1024 * 1024,
+        },
+    ]);
+    after.largest_directories.extend([
+        DirectoryUsage {
+            path: "~/.cargo-target".to_string(),
+            bytes: 565 * 1024 * 1024,
+        },
+        DirectoryUsage {
+            path: "~/.nvm/versions".to_string(),
+            bytes: 350 * 1024 * 1024,
+        },
+    ]);
+    after.warnings = vec![
+        "du ~: permission or read errors ignored".to_string(),
+        "du ~/.local/share: permission or read errors ignored".to_string(),
+        "du ~: permission or read errors ignored".to_string(),
+    ];
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(output.contains("Some directory sizes may be partial"));
+    assert_eq!(
+        output
+            .matches("- du ~: permission or read errors ignored")
+            .count(),
+        1
+    );
+    assert_eq!(assessment_line(&output), "Healthy");
+    assert!(output.contains("No action required."));
+    assert!(!output
+        .contains("Review the listed directories to determine whether the growth is expected."));
+}
+
+#[test]
+fn unexpected_collection_warnings_still_recommend_investigation() {
+    let mut after = sample(19, 61, 0);
+    after.warnings = vec!["podman system df failed: permission denied".to_string()];
+
+    let output = render_investigation(None, &after);
+
+    assert_eq!(assessment_line(&output), "Investigation recommended");
+    assert!(output
+        .contains("Review the listed directories to determine whether current usage is expected."));
+}
+
+#[test]
 fn cache_assessment_has_cache_recommendation() {
     let after = sample(19, 62, 3 * 1024_i64.pow(3));
     let output = render_investigation(None, &after);

@@ -159,10 +159,11 @@ pub fn render_investigation_with_codex(
             String::new(),
             "Collection warnings".to_string(),
             String::new(),
+            "Some directory sizes may be partial; filesystem usage is still measured separately."
+                .to_string(),
         ]);
         lines.extend(
-            current
-                .warnings
+            dedupe(current.warnings.clone())
                 .iter()
                 .map(|warning| format!("- {warning}")),
         );
@@ -472,6 +473,7 @@ fn scan_evidence(
         .map(|change| change.bytes)
         .max()
         .unwrap_or(0);
+    let warning_pressure = collection_warning_pressure(current, largest);
     let has_unclassified_change = recent_increases
         .iter()
         .any(|change| !classifications[&change.path].known);
@@ -512,11 +514,26 @@ fn scan_evidence(
             && (current.filesystem.used_percent >= 85
                 || largest_recent >= LARGE_GROWTH_BYTES
                 || has_unclassified_change
-                || !current.warnings.is_empty()),
+                || warning_pressure),
         container_storage_increasing,
         build_artifacts_accumulating: build_recent || build_artifacts,
         cache_growth_expected: cache_recent || cache_current,
     }
+}
+
+fn collection_warning_pressure(current: &Snapshot, largest: &[DirectoryUsage]) -> bool {
+    if current.warnings.is_empty() {
+        return false;
+    }
+    let has_unexpected_warning = current
+        .warnings
+        .iter()
+        .any(|warning| !is_partial_du_warning(warning));
+    has_unexpected_warning || largest.is_empty()
+}
+
+fn is_partial_du_warning(warning: &str) -> bool {
+    warning.starts_with("du ") && warning.ends_with(": permission or read errors ignored")
 }
 
 fn recommendations(

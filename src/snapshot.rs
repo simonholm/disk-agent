@@ -74,6 +74,7 @@ pub fn collect_snapshot() -> Result<Snapshot> {
     warnings.extend(local_warnings);
     warnings.extend(copilot_warnings);
     warnings.extend(top_warnings);
+    warnings = dedupe(warnings);
 
     let largest_directories = largest_directories(&top_usage, &local_share_usage, &copilot_usage);
 
@@ -109,6 +110,14 @@ fn largest_directories(
         .into_iter()
         .filter(|usage| usage.path != "~")
         .take(100)
+        .collect()
+}
+
+fn dedupe(items: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    items
+        .into_iter()
+        .filter(|item| seen.insert(item.clone()))
         .collect()
 }
 

@@ -1,3 +1,11 @@
+pattern: ~/.cargo-target
+classification: Rust build artifacts
+category: Rust
+risk: Low
+explanation: |
+  Rust build artifacts can grow quickly because Cargo retains intermediate compilation outputs and target directories.
+recommendation: Inspect Cargo build artifacts. Consider cargo clean only if the artifacts are no longer needed.
+---
 pattern: ~/.cargo-target/debug
 classification: Rust debug build artifacts
 category: Rust

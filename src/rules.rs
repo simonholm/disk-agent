@@ -40,6 +40,7 @@ pub struct ClassificationStatic {
 const RULE_FILES: &[&str] = &[
     include_str!("../rules/common.yaml"),
     include_str!("../rules/cargo.yaml"),
+    include_str!("../rules/claude.yaml"),
     include_str!("../rules/codex.yaml"),
     include_str!("../rules/copilot.yaml"),
     include_str!("../rules/npm.yaml"),

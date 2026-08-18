@@ -22,6 +22,14 @@ explanation: |
   Node package data commonly grows during installs and dependency updates.
 recommendation: Review recent Node package installs if the increase was unexpected.
 ---
+pattern: ~/.nvm/versions
+classification: Node/NVM runtimes
+category: Node
+risk: Low
+explanation: |
+  NVM stores installed Node.js runtimes under this location.
+recommendation: Review installed NVM runtimes if the increase was unexpected.
+---
 pattern: ~/.local/share/Trash
 classification: Trash
 category: Trash

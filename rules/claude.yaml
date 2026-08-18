@@ -1,0 +1,7 @@
+pattern: ~/.local/share/claude/versions
+classification: Claude application releases
+category: Application releases
+risk: Low
+explanation: |
+  Claude stores application/runtime releases under its local share directory.
+recommendation: Review retained Claude application releases if the growth is unexpected.
