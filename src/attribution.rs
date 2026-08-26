@@ -66,7 +66,7 @@ pub fn cause_summary(
 ) -> String {
     let mut totals = BTreeMap::<String, i64>::new();
     let mut unclassified_total = 0;
-    for (change, classification) in classifications {
+    for (change, classification) in mutually_exclusive_classifications(classifications) {
         if classification.known {
             *totals.entry(classification.category.clone()).or_insert(0) += change.bytes;
         } else {
@@ -97,10 +97,38 @@ pub fn cause_summary(
     }
 }
 
+pub fn unclassified_growth_lines(classifications: &[(UsageChange, Classification)]) -> Vec<String> {
+    let unclassified = mutually_exclusive_classifications(classifications)
+        .into_iter()
+        .filter(|(_, classification)| !classification.known)
+        .collect::<Vec<_>>();
+    if unclassified.is_empty() {
+        return Vec::new();
+    }
+
+    let total = unclassified
+        .iter()
+        .map(|(change, _)| change.bytes)
+        .sum::<i64>();
+    let mut lines = vec![
+        String::new(),
+        format!("Unclassified growth ({}):", format_bytes(Some(total), true)),
+    ];
+    lines.extend(unclassified.into_iter().map(|(change, _)| {
+        format!(
+            "  {} {}",
+            format_bytes(Some(change.bytes), true),
+            change.path
+        )
+    }));
+    lines
+}
+
 pub fn risk_level(after: &Snapshot, classifications: &[(UsageChange, Classification)]) -> String {
     if classifications.is_empty() {
         return "Low".to_string();
     }
+    let classifications = mutually_exclusive_classifications(classifications);
     let known_bytes = classifications
         .iter()
         .filter(|(_, classification)| classification.known)
@@ -148,6 +176,7 @@ pub fn recommendations(classifications: &[(UsageChange, Classification)]) -> Vec
         return vec!["No cleanup is currently required.".to_string()];
     }
 
+    let classifications = mutually_exclusive_classifications(classifications);
     let known_bytes = classifications
         .iter()
         .filter(|(_, classification)| classification.known)
@@ -179,6 +208,20 @@ pub fn recommendations(classifications: &[(UsageChange, Classification)]) -> Vec
         items.push("No cleanup is currently required.".to_string());
     }
     items
+}
+
+fn mutually_exclusive_classifications(
+    classifications: &[(UsageChange, Classification)],
+) -> Vec<(UsageChange, Classification)> {
+    classifications
+        .iter()
+        .filter(|(candidate, _)| {
+            !classifications.iter().any(|(other, _)| {
+                candidate.path != other.path && is_child_path(&other.path, &candidate.path)
+            })
+        })
+        .cloned()
+        .collect()
 }
 
 pub fn classify_contributors(

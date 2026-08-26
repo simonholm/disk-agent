@@ -2,6 +2,7 @@ use anyhow::Result;
 
 use crate::attribution::{
     cause_summary, classify_contributors, recommendations, risk_level, top_contributors,
+    unclassified_growth_lines,
 };
 use crate::codex::{detect_codex_standalone, CodexStandalone};
 use crate::diff::{latest_two_from, SIGNIFICANT_BYTES};
@@ -60,6 +61,9 @@ pub fn render_explanation_with_codex(
         String::new(),
         "Cause:".to_string(),
         cause_summary(&contributors, &classifications),
+    ]);
+    lines.extend(unclassified_growth_lines(&classifications));
+    lines.extend([
         String::new(),
         "Risk:".to_string(),
         risk_level(after, &classifications),

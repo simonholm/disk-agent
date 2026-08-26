@@ -78,8 +78,64 @@ fn explain_reports_unknown_when_contributors_are_unclassified() {
     let output = render_explanation(&before, &after);
 
     assert!(output.contains("Growth occurred in unclassified locations."));
+    assert!(output.contains("Unclassified growth (+300M):"));
+    assert!(output.contains("  +300M ~/mystery"));
     assert!(output.contains("Risk:\nUnknown"));
     assert!(output.contains("Inspect unclassified locations before taking cleanup action."));
+}
+
+#[test]
+fn explain_unclassified_total_matches_listed_paths() {
+    let before = sample(
+        18,
+        66,
+        vec![("~", 0), ("~/mystery", 0), ("~/.local/bin", 0)],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 500 * MIB),
+            ("~/mystery", 300 * MIB),
+            ("~/.local/bin", 200 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("Unclassified growth (+500M):"));
+    assert!(output.contains("  +300M ~/mystery"));
+    assert!(output.contains("  +200M ~/.local/bin"));
+}
+
+#[test]
+fn explain_category_totals_do_not_double_count_nested_paths() {
+    let before = sample(
+        18,
+        66,
+        vec![
+            ("~", 0),
+            ("~/labs", 0),
+            ("~/labs/repos", 0),
+            ("~/.cache/uv", 0),
+        ],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 1300 * MIB),
+            ("~/labs", 1000 * MIB),
+            ("~/labs/repos", 700 * MIB),
+            ("~/.cache/uv", 300 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("Growth is primarily due to Development (+1000M) and Cache (+300M)."));
+    assert!(!output.contains("Development (+1.7G)"));
+    assert!(!output.contains("  +1300M ~"));
 }
 
 #[test]

@@ -7,6 +7,7 @@ fn classifier_maps_common_paths_to_categories() {
 
     let cases = [
         ("~/.cache/pip", "Cache"),
+        ("~/.cache/uv", "Cache"),
         ("~/.cargo/registry", "Rust"),
         ("~/.cargo-target", "Rust"),
         ("~/.cargo-target/release", "Rust"),
@@ -17,6 +18,7 @@ fn classifier_maps_common_paths_to_categories() {
             "~/.local/share/claude/versions/0.1.0",
             "Application releases",
         ),
+        ("~/.codex/packages/0.145.0", "Application releases"),
         ("~/.local/share/Trash/files", "Trash"),
         ("~/.local/share/containers/storage", "Podman"),
         ("~/Downloads/archive.iso", "Downloads"),
