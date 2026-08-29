@@ -1,3 +1,11 @@
+pattern: ~/.codex
+classification: Codex persistent state/history
+category: Application data
+risk: Low
+explanation: |
+  Codex stores persistent state, sessions, history, and package data under this directory.
+recommendation: Do not treat ~/.codex as disposable cache; inspect subdirectories before removing anything.
+---
 pattern: ~/.codex/packages
 classification: Application releases
 category: Application releases

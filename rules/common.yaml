@@ -1,3 +1,11 @@
+pattern: ~/.cache/uv
+classification: uv cache
+category: Cache
+risk: Low
+explanation: |
+  uv stores downloaded packages and build cache entries under this cache directory.
+recommendation: Run `uv cache clean` if reclaiming uv cache storage is desired.
+---
 pattern: ~/.cache
 classification: Cache
 category: Cache
@@ -37,6 +45,22 @@ risk: Low
 explanation: |
   Desktop trash stores deleted files until it is emptied.
 recommendation: Review the trash contents before removing anything.
+---
+pattern: ~/.local/share/uv
+classification: uv-managed tools/data
+category: Application data
+risk: Low
+explanation: |
+  uv stores managed tools and related application data under this local share directory.
+recommendation: Review uv-managed tools and data before removing anything; this is not classified as disposable cache.
+---
+pattern: ~/.local/share/junie
+classification: Junie application data
+category: Application data
+risk: Low
+explanation: |
+  Junie stores application data under this local share directory.
+recommendation: Review Junie application data before removing anything.
 ---
 pattern: ~/.local/share/containers
 classification: Podman storage

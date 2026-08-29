@@ -139,6 +139,35 @@ fn explain_category_totals_do_not_double_count_nested_paths() {
 }
 
 #[test]
+fn explain_recommends_native_uv_cache_clean_for_uv_cache_growth() {
+    let before = sample(18, 66, vec![("~", 0), ("~/.cache/uv", 0)]);
+    let after = sample(19, 69, vec![("~", 1300 * MIB), ("~/.cache/uv", 1300 * MIB)]);
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("  +1.3G ~/.cache/uv"));
+    assert!(output.contains("Growth is primarily due to Cache (+1.3G)."));
+    assert!(output.contains("Run `uv cache clean` if reclaiming uv cache storage is desired."));
+}
+
+#[test]
+fn explain_does_not_treat_uv_local_share_as_cache() {
+    let before = sample(18, 66, vec![("~", 0), ("~/.local/share/uv", 0)]);
+    let after = sample(
+        19,
+        69,
+        vec![("~", 1300 * MIB), ("~/.local/share/uv", 1300 * MIB)],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("  +1.3G ~/.local/share/uv"));
+    assert!(output.contains("Growth is primarily due to Application data (+1.3G)."));
+    assert!(output.contains("this is not classified as disposable cache"));
+    assert!(!output.contains("uv cache clean"));
+}
+
+#[test]
 fn explain_uses_codex_runtime_retention_knowledge() {
     let before = sample(18, 66, vec![("~", 0), ("~/.codex", 0)]);
     let after = sample(

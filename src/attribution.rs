@@ -250,6 +250,10 @@ fn changed_descendants<'a>(
 }
 
 fn recommendation_for_category(classification: &Classification) -> String {
+    if classification.classification == "uv cache" {
+        return classification.recommendation.clone();
+    }
+
     match classification.category.as_str() {
         "Downloads" => "Review ~/Downloads if the increase was unexpected.".to_string(),
         "Cache" => {

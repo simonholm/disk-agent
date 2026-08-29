@@ -1,6 +1,10 @@
+use disk_agent::cargo::CargoTargetDiagnostic;
 use disk_agent::classify::classify_path;
 use disk_agent::codex::{CodexRelease, CodexStandalone};
-use disk_agent::investigate::{assess, render_investigation, render_investigation_with_codex};
+use disk_agent::investigate::{
+    assess, render_investigation, render_investigation_with_codex,
+    render_investigation_with_diagnostics,
+};
 use disk_agent::models::{
     DirectoryUsage, FilesystemUsage, PodmanContainerUsage, PodmanUsage, Snapshot, UsageChange,
 };
@@ -90,7 +94,7 @@ fn investigation_reads_like_operational_report() {
     assert!(output.contains("Current filesystem usage"));
     assert!(output.contains("/dev/vda mounted at /: 62% used"));
     assert!(output.contains("Largest consumers"));
-    assert!(output.contains("950M ~/.codex (Mixed)"));
+    assert!(output.contains("950M ~/.codex (Application data)"));
     assert!(!output.contains("Recently active areas"));
     assert!(output.contains("Changes since today's snapshot"));
     assert!(output.contains("Podman status"));
@@ -204,6 +208,26 @@ fn investigation_reports_codex_runtime_update_without_generic_investigation_pres
     assert_eq!(assessment_line(&output), "Healthy");
     assert!(!output
         .contains("Review the listed directories to determine whether the growth is expected."));
+}
+
+#[test]
+fn investigation_reports_stale_repository_local_cargo_target_without_cleanup_claim() {
+    let diagnostics = vec![CargoTargetDiagnostic {
+        workspace: "~/labs/repos/recall".to_string(),
+        local_target: "~/labs/repos/recall/target".to_string(),
+        active_target: "~/.cargo-target".to_string(),
+    }];
+
+    let output =
+        render_investigation_with_diagnostics(None, &sample(19, 62, 0), None, &diagnostics);
+
+    assert!(output.contains("Cargo targets"));
+    assert!(output.contains(
+        "~/labs/repos/recall/target appears inactive/stale; Cargo reports active target directory ~/.cargo-target for ~/labs/repos/recall."
+    ));
+    assert!(!output.contains("safe to remove"));
+    assert!(!output.contains("delete"));
+    assert!(!output.contains("reclaim"));
 }
 
 #[test]

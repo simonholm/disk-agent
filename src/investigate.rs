@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
 
+use crate::cargo::{detect_stale_cargo_targets, CargoTargetDiagnostic};
 use crate::classify::{classify_path, is_child_path};
 use crate::codex::{detect_codex_standalone, CodexStandalone};
 use crate::diff::compare_snapshots;
@@ -23,13 +24,14 @@ pub fn non_overlapping(changes: Vec<UsageChange>) -> Vec<UsageChange> {
     let mut result = Vec::new();
 
     for change in &changes {
+        let classification = classify_path(&change.path, Some(&rules));
         let known_children = changes.iter().any(|child| {
             is_child_path(&child.path, &change.path)
                 && child.bytes > 0
                 && classify_path(&child.path, Some(&rules)).known
                 && child.bytes >= change.bytes.abs() / 2
         });
-        if !classify_path(&change.path, Some(&rules)).known && known_children {
+        if known_children && (!classification.known || is_codex_state_parent(change)) {
             continue;
         }
         if result
@@ -41,6 +43,10 @@ pub fn non_overlapping(changes: Vec<UsageChange>) -> Vec<UsageChange> {
         result.push(change.clone());
     }
     result
+}
+
+fn is_codex_state_parent(change: &UsageChange) -> bool {
+    change.path == "~/.codex"
 }
 
 pub fn cause(change: &UsageChange, classification: &Classification, snapshot: &Snapshot) -> String {
@@ -63,13 +69,22 @@ pub fn cause(change: &UsageChange, classification: &Classification, snapshot: &S
 }
 
 pub fn render_investigation(today_baseline: Option<&Snapshot>, current: &Snapshot) -> String {
-    render_investigation_with_codex(today_baseline, current, None)
+    render_investigation_with_diagnostics(today_baseline, current, None, &[])
 }
 
 pub fn render_investigation_with_codex(
     today_baseline: Option<&Snapshot>,
     current: &Snapshot,
     codex_standalone: Option<&CodexStandalone>,
+) -> String {
+    render_investigation_with_diagnostics(today_baseline, current, codex_standalone, &[])
+}
+
+pub fn render_investigation_with_diagnostics(
+    today_baseline: Option<&Snapshot>,
+    current: &Snapshot,
+    codex_standalone: Option<&CodexStandalone>,
+    cargo_targets: &[CargoTargetDiagnostic],
 ) -> String {
     let rules = load_rules();
     let recent_changes = today_baseline
@@ -154,6 +169,11 @@ pub fn render_investigation_with_codex(
         ));
     }
 
+    if !cargo_targets.is_empty() {
+        lines.extend([String::new(), "Cargo targets".to_string(), String::new()]);
+        lines.extend(cargo_target_status(cargo_targets));
+    }
+
     if !current.warnings.is_empty() {
         lines.extend([
             String::new(),
@@ -226,11 +246,13 @@ pub fn investigate_command() -> Result<String> {
     let today_baseline = today_snapshot(&directory, &current)?;
     let saved = save_if_new_day(&current, &directory)?;
     let codex_standalone = detect_codex_standalone()?;
+    let cargo_targets = detect_stale_cargo_targets(&current)?;
 
-    let report = render_investigation_with_codex(
+    let report = render_investigation_with_diagnostics(
         today_baseline.as_ref(),
         &current,
         codex_standalone.as_ref(),
+        &cargo_targets,
     );
     Ok(match saved {
         None => format!(
@@ -409,6 +431,18 @@ fn codex_standalone_status(
             .to_string(),
     ]);
     lines
+}
+
+fn cargo_target_status(cargo_targets: &[CargoTargetDiagnostic]) -> Vec<String> {
+    cargo_targets
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{} appears inactive/stale; Cargo reports active target directory {} for {}.",
+                diagnostic.local_target, diagnostic.active_target, diagnostic.workspace
+            )
+        })
+        .collect()
 }
 
 fn is_codex_runtime_change(change: &UsageChange) -> bool {

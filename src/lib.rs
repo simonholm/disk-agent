@@ -1,4 +1,5 @@
 pub mod attribution;
+pub mod cargo;
 pub mod classify;
 pub mod cli;
 pub mod codex;
