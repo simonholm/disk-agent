@@ -39,6 +39,33 @@ fn classifier_maps_common_paths_to_categories() {
 }
 
 #[test]
+fn classifier_recognizes_shared_cargo_build_artifacts() {
+    let rules = load_rules();
+
+    for path in [
+        "~/.cargo-target",
+        "~/.cargo-target/release",
+        "~/.cargo-target/release/deps",
+    ] {
+        let classification = classify_path(path, Some(&rules));
+        assert_eq!(classification.classification, "Rust shared build artifacts");
+        assert_eq!(classification.category, "Rust");
+        assert_eq!(classification.risk, "Low");
+        assert!(classification.known);
+        assert!(classification
+            .explanation
+            .contains("shared Cargo target directory"));
+    }
+
+    let debug = classify_path("~/.cargo-target/debug/deps", Some(&rules));
+    assert_eq!(debug.classification, "Rust debug build artifacts");
+    assert_eq!(debug.category, "Rust");
+    assert!(debug.known);
+
+    assert!(!classify_path("~/.cargo-target-other/release", Some(&rules)).known);
+}
+
+#[test]
 fn classifier_distinguishes_uv_cache_from_uv_managed_data() {
     let rules = load_rules();
 

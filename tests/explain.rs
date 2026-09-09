@@ -71,6 +71,46 @@ fn explain_expands_home_growth_into_classified_contributors() {
 }
 
 #[test]
+fn explain_attributes_shared_cargo_target_and_registry_growth_to_rust() {
+    let before = sample(
+        18,
+        64,
+        vec![
+            ("~", 0),
+            ("~/.cargo-target", 0),
+            ("~/.cargo-target/release", 0),
+            ("~/.cargo", 0),
+            ("~/.cargo/registry", 0),
+        ],
+    );
+    let after = sample(
+        19,
+        68,
+        vec![
+            ("~", 1680 * MIB),
+            ("~/.cargo-target", 1400 * MIB),
+            ("~/.cargo-target/release", 1400 * MIB),
+            ("~/.cargo", 280 * MIB),
+            ("~/.cargo/registry", 262 * MIB),
+        ],
+    );
+
+    let diff = disk_agent::diff::render_diff(&before, &after);
+    assert!(diff.contains("+1.4G ~/.cargo-target\n"));
+    assert!(diff.contains("+1.4G ~/.cargo-target/release\n"));
+    assert!(diff.contains("+280M ~/.cargo\n"));
+    assert!(diff.contains("+262M ~/.cargo/registry\n"));
+
+    let output = render_explanation(&before, &after);
+    assert!(output.contains("  +1.4G ~/.cargo-target/release\n"));
+    assert!(output.contains("  +280M ~/.cargo\n"));
+    assert!(output.contains("Growth is primarily due to Rust (+1.6G)."));
+    assert!(!output.contains("unclassified"));
+    assert!(!output.contains("Unclassified growth"));
+    assert!(output.contains("Risk:\nLow"));
+}
+
+#[test]
 fn explain_reports_unknown_when_contributors_are_unclassified() {
     let before = sample(18, 66, vec![("~", 0), ("~/mystery", 0)]);
     let after = sample(19, 69, vec![("~", 300 * MIB), ("~/mystery", 300 * MIB)]);
