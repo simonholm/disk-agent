@@ -6,6 +6,10 @@ pub struct Rule {
     pub risk: String,
     pub explanation: String,
     pub recommendation: String,
+    pub version_store: bool,
+    pub version_entries: Option<String>,
+    pub current_pointer: Option<String>,
+    pub store_name: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -129,5 +133,11 @@ fn parse_rule_document(text: &str) -> Rule {
         recommendation: values
             .remove("recommendation")
             .unwrap_or_else(|| "None.".to_string()),
+        version_store: values
+            .remove("version_store")
+            .is_some_and(|value| value.eq_ignore_ascii_case("true")),
+        version_entries: values.remove("version_entries"),
+        current_pointer: values.remove("current_pointer"),
+        store_name: values.remove("store_name"),
     }
 }

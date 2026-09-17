@@ -5,3 +5,7 @@ risk: Low
 explanation: |
   Claude stores application/runtime releases under its local share directory.
 recommendation: Review retained Claude application releases if the growth is unexpected.
+version_store: true
+version_entries: files
+current_pointer: ~/.local/bin/claude
+store_name: Claude

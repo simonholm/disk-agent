@@ -14,6 +14,7 @@ pub mod models;
 pub mod output;
 pub mod paths;
 pub mod podman;
+pub mod release_store;
 pub mod report;
 pub mod rules;
 pub mod snapshot;

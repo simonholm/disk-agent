@@ -4,11 +4,12 @@ use anyhow::{anyhow, Result};
 
 use crate::cargo::{detect_stale_cargo_targets, CargoTargetDiagnostic};
 use crate::classify::{classify_path, is_child_path};
-use crate::codex::{detect_codex_standalone, CodexStandalone};
+use crate::codex::CodexStandalone;
 use crate::diff::compare_snapshots;
 use crate::json::load_snapshot;
 use crate::models::{DirectoryUsage, Snapshot, UsageChange};
 use crate::paths;
+use crate::release_store::{detect_release_stores, ReleaseStore};
 use crate::rules::{load_rules, Classification};
 use crate::snapshot::{collect_snapshot, save_snapshot};
 
@@ -80,10 +81,34 @@ pub fn render_investigation_with_codex(
     render_investigation_with_diagnostics(today_baseline, current, codex_standalone, &[])
 }
 
+pub fn render_investigation_with_release_stores(
+    today_baseline: Option<&Snapshot>,
+    current: &Snapshot,
+    release_stores: &[ReleaseStore],
+) -> String {
+    render_investigation_with_all_diagnostics(today_baseline, current, None, release_stores, &[])
+}
+
 pub fn render_investigation_with_diagnostics(
     today_baseline: Option<&Snapshot>,
     current: &Snapshot,
     codex_standalone: Option<&CodexStandalone>,
+    cargo_targets: &[CargoTargetDiagnostic],
+) -> String {
+    render_investigation_with_all_diagnostics(
+        today_baseline,
+        current,
+        codex_standalone,
+        &[],
+        cargo_targets,
+    )
+}
+
+fn render_investigation_with_all_diagnostics(
+    today_baseline: Option<&Snapshot>,
+    current: &Snapshot,
+    codex_standalone: Option<&CodexStandalone>,
+    release_stores: &[ReleaseStore],
     cargo_targets: &[CargoTargetDiagnostic],
 ) -> String {
     let rules = load_rules();
@@ -169,6 +194,23 @@ pub fn render_investigation_with_diagnostics(
         ));
     }
 
+    let notable_stores = release_stores
+        .iter()
+        .filter(|store| store.is_notable())
+        .collect::<Vec<_>>();
+    if !notable_stores.is_empty() {
+        lines.extend([
+            String::new(),
+            "Retained application versions".to_string(),
+            String::new(),
+        ]);
+        for store in notable_stores {
+            lines.extend(release_store_status(store));
+            lines.push(String::new());
+        }
+        lines.pop();
+    }
+
     if !cargo_targets.is_empty() {
         lines.extend([String::new(), "Cargo targets".to_string(), String::new()]);
         lines.extend(cargo_target_status(cargo_targets));
@@ -245,13 +287,14 @@ pub fn investigate_command() -> Result<String> {
     let current = collect_snapshot()?;
     let today_baseline = today_snapshot(&directory, &current)?;
     let saved = save_if_new_day(&current, &directory)?;
-    let codex_standalone = detect_codex_standalone()?;
+    let release_stores = detect_release_stores()?;
     let cargo_targets = detect_stale_cargo_targets(&current)?;
 
-    let report = render_investigation_with_diagnostics(
+    let report = render_investigation_with_all_diagnostics(
         today_baseline.as_ref(),
         &current,
-        codex_standalone.as_ref(),
+        None,
+        &release_stores,
         &cargo_targets,
     );
     Ok(match saved {
@@ -430,6 +473,41 @@ fn codex_standalone_status(
         "Retention policy: Unknown; upstream standalone updater currently does not prune releases."
             .to_string(),
     ]);
+    lines
+}
+
+fn release_store_status(store: &ReleaseStore) -> Vec<String> {
+    let mut lines = vec![store.name.clone()];
+    match (
+        store.active_entry.as_deref(),
+        store.inactive_entry_count(),
+        store.inactive_storage_bytes(),
+    ) {
+        (Some(active), Some(count), Some(bytes)) => lines.extend([
+            format!("Active version: {active}"),
+            format!("Installed versions: {}", store.entries.len()),
+            format!(
+                "Version-store storage: {}",
+                crate::output::format_bytes(Some(store.total_storage_bytes()), false)
+            ),
+            format!(
+                "Retained versions: {count} ({})",
+                crate::output::format_bytes(Some(bytes), false)
+            ),
+        ]),
+        _ => lines.extend([
+            "Active version: unavailable".to_string(),
+            format!("Installed versions: {}", store.entries.len()),
+            format!(
+                "Version-store storage: {}",
+                crate::output::format_bytes(Some(store.total_storage_bytes()), false)
+            ),
+        ]),
+    }
+    lines.push(
+        "Review retained versions before removal; rollback or package-manager retention may be intentional."
+            .to_string(),
+    );
     lines
 }
 

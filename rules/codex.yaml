@@ -13,3 +13,15 @@ risk: Low
 explanation: |
   Codex stores complete standalone releases. Multiple retained versions are expected after updates.
 recommendation: Review retained Codex releases.
+---
+pattern: ~/.codex/packages/standalone/releases
+classification: Codex application releases
+category: Application releases
+risk: Low
+explanation: |
+  Codex stores complete standalone releases in this version store.
+recommendation: Review retained Codex releases.
+version_store: true
+version_entries: directories
+current_pointer: ~/.codex/packages/standalone/current
+store_name: Codex

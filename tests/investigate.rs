@@ -3,11 +3,12 @@ use disk_agent::classify::classify_path;
 use disk_agent::codex::{CodexRelease, CodexStandalone};
 use disk_agent::investigate::{
     assess, render_investigation, render_investigation_with_codex,
-    render_investigation_with_diagnostics,
+    render_investigation_with_diagnostics, render_investigation_with_release_stores,
 };
 use disk_agent::models::{
     DirectoryUsage, FilesystemUsage, PodmanContainerUsage, PodmanUsage, Snapshot, UsageChange,
 };
+use disk_agent::release_store::{ReleaseEntry, ReleaseStore};
 use disk_agent::rules::load_rules;
 
 const SUPPORTED_ASSESSMENTS: &[&str] = &[
@@ -134,6 +135,43 @@ fn investigation_omits_codex_section_for_one_standalone_release() {
     let output = render_investigation_with_codex(None, &sample(19, 62, 0), Some(&codex));
 
     assert!(!output.contains("Codex\n"));
+}
+
+#[test]
+fn investigation_reports_notable_retained_application_versions_conservatively() {
+    let stores = vec![
+        ReleaseStore {
+            name: "Codex".to_string(),
+            entries: (0..4)
+                .map(|version| ReleaseEntry {
+                    name: version.to_string(),
+                    bytes: 256 * 1024 * 1024,
+                })
+                .collect(),
+            active_entry: Some("3".to_string()),
+        },
+        ReleaseStore {
+            name: "Claude".to_string(),
+            entries: vec![
+                ReleaseEntry {
+                    name: "2.1.270".to_string(),
+                    bytes: 128 * 1024 * 1024,
+                };
+                4
+            ],
+            active_entry: None,
+        },
+    ];
+
+    let output = render_investigation_with_release_stores(None, &sample(19, 62, 0), &stores);
+
+    assert!(output.contains("Retained application versions"));
+    assert!(output.contains("Codex\nActive version: 3"));
+    assert!(output.contains("Retained versions: 3 (768M)"));
+    assert!(output.contains("Claude\nActive version: unavailable"));
+    assert!(output.contains("Review retained versions before removal; rollback or package-manager retention may be intentional."));
+    assert!(!output.contains("safe to remove"));
+    assert!(!output.contains("delete"));
 }
 
 #[test]
