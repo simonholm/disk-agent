@@ -4,7 +4,7 @@ use crate::classify::{classify_path, is_child_path};
 use crate::diff::{snapshot_changes, SIGNIFICANT_BYTES};
 use crate::models::{Snapshot, UsageChange};
 use crate::output::format_bytes;
-use crate::rules::{Classification, Rule};
+use crate::rules::{load_rules, Classification, Rule};
 
 const LARGE_CATEGORY_GROWTH_BYTES: i64 = 1024_i64.pow(3);
 const ABNORMAL_CATEGORY_GROWTH_BYTES: i64 = 5 * 1024_i64.pow(3);
@@ -37,6 +37,17 @@ pub fn top_contributors(before: &Snapshot, after: &Snapshot, limit: usize) -> Ve
         .into_iter()
         .map(|(path, bytes)| UsageChange { path, bytes })
         .collect::<Vec<_>>();
+    let rules = load_rules();
+    let descendants = candidates.clone();
+    candidates.retain(|candidate| {
+        let classification = classify_path(&candidate.path, Some(&rules));
+        classification.known
+            || !descendants.iter().any(|descendant| {
+                is_child_path(&descendant.path, &candidate.path)
+                    && classify_path(&descendant.path, Some(&rules)).known
+                    && candidate.bytes.saturating_sub(descendant.bytes) < SIGNIFICANT_BYTES
+            })
+    });
     candidates.sort_by(|left, right| {
         right
             .bytes

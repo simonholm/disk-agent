@@ -208,6 +208,49 @@ fn explain_does_not_treat_uv_local_share_as_cache() {
 }
 
 #[test]
+fn explain_prefers_claude_version_growth_over_its_unclassified_local_parent() {
+    let mut before = sample(66, 66, vec![("~", 0), ("~/.local", 0)]);
+    let mut after = sample(67, 67, vec![("~", 233_700_000), ("~/.local", 233_700_000)]);
+    before.local_share_usage = vec![DirectoryUsage {
+        path: "~/.local/share/claude/versions".to_string(),
+        bytes: 645_840_896,
+    }];
+    after.local_share_usage = vec![DirectoryUsage {
+        path: "~/.local/share/claude/versions".to_string(),
+        bytes: 874_512_384,
+    }];
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("~/.local/share/claude/versions"));
+    assert!(output.contains("Application releases"));
+    assert!(!output.contains("Unclassified growth"));
+}
+
+#[test]
+fn explain_handles_claude_growth_larger_than_its_local_parent_delta() {
+    let mut before = sample(66, 66, vec![("~", 800_000_000), ("~/.local", 800_000_000)]);
+    let mut after = sample(
+        67,
+        67,
+        vec![("~", 1_000_000_000), ("~/.local", 1_000_000_000)],
+    );
+    before.local_share_usage = vec![DirectoryUsage {
+        path: "~/.local/share/claude/versions".to_string(),
+        bytes: 645_840_896,
+    }];
+    after.local_share_usage = vec![DirectoryUsage {
+        path: "~/.local/share/claude/versions".to_string(),
+        bytes: 874_512_384,
+    }];
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("~/.local/share/claude/versions"));
+    assert!(!output.contains("Unclassified growth"));
+}
+
+#[test]
 fn explain_uses_codex_runtime_retention_knowledge() {
     let before = sample(18, 66, vec![("~", 0), ("~/.codex", 0)]);
     let after = sample(
