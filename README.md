@@ -1,6 +1,6 @@
 # disk-agent
 
-`disk-agent` is a bounded, read-only Linux disk usage observer. It records daily
+`disk-agent` is a bounded, read-only Linux disk usage observer. It records
 disk usage snapshots, compares recent snapshots, explains significant changes,
 and runs live diagnostics using deterministic rules.
 
@@ -17,8 +17,8 @@ modify the system.
   data.
 - Deterministic: reports and explanations come from saved snapshots and explicit
   rules, not LLMs or remote services.
-- Daily snapshots: snapshots are stored as one JSON file per day in
-  `~/.disk-agent/snapshots/YYYY-MM-DD.json`.
+- Snapshots: each collection is stored as a JSON file using local time in
+  `~/.disk-agent/snapshots/YYYY-MM-DD_HH-MM-SS.json`.
 - Separate history from diagnosis: use saved snapshots for historical changes
   and fresh read-only scans for live investigation.
 - No automatic cleanup: recommendations are informational only.
@@ -38,11 +38,11 @@ which -a disk-agent
 ## Commands
 
 ```sh
-disk-agent snapshot            # collect and store today's snapshot
+disk-agent snapshot            # collect and store a snapshot
 disk-agent snapshot --verbose  # show all ignored collection warnings
 disk-agent report              # summarize the latest saved snapshot
 disk-agent report --refresh    # collect a fresh snapshot, then summarize it
-disk-agent diff                # compare the latest two daily snapshots
+disk-agent diff                # compare the latest two snapshots
 disk-agent explain             # explain significant changes between snapshots
 disk-agent investigate         # inspect current disk usage and diagnostic signals
 ```
@@ -57,8 +57,8 @@ disk-agent explain
 disk-agent investigate
 ```
 
-`snapshot` saves today's baseline. `report` summarizes the latest saved state.
-`diff` shows what changed between the latest two daily snapshots. `explain`
+`snapshot` saves a baseline. `report` summarizes the latest saved state.
+`diff` shows what changed between the latest two snapshots. `explain`
 classifies significant changes when the snapshot data supports it.
 `investigate` collects fresh read-only evidence and prints a current-state
 operational assessment. If today's snapshot already exists, it may show
@@ -100,8 +100,8 @@ usage collection, and live investigation.
 
 `disk-agent report` reads the latest saved snapshot and identifies its timestamp
 and source path in the output. Use `disk-agent report --refresh` to collect and
-save a fresh snapshot before reporting. Snapshots continue to use one file per
-day, so a refreshed report on the same day overwrites that day's snapshot.
+save a fresh snapshot before reporting. Each snapshot uses its local collection
+time in the filename, so multiple snapshots on the same day are preserved.
 
 Collection is finite and local: filesystem statistics, bounded-depth `du`
 scans, and Podman usage from `podman system df` or rootless Podman storage when

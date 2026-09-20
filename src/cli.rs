@@ -14,7 +14,7 @@ pub struct Cli {
 
 #[derive(Debug, Clone, Copy, Subcommand)]
 pub enum Command {
-    /// Collect and store today's disk usage snapshot.
+    /// Collect and store a disk usage snapshot.
     Snapshot {
         /// Print each warning that was ignored during collection.
         #[arg(long)]
@@ -26,7 +26,7 @@ pub enum Command {
         #[arg(long)]
         refresh: bool,
     },
-    /// Compare the latest two daily snapshots.
+    /// Compare the latest two snapshots.
     Diff,
     /// Explain the latest significant changes.
     Explain,

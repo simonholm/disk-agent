@@ -10,6 +10,7 @@ use crate::json::load_snapshot;
 use crate::models::{DirectoryUsage, Snapshot, UsageChange};
 use crate::paths;
 use crate::release_store::{detect_release_stores, ReleaseStore};
+use crate::report::snapshot_paths;
 use crate::rules::{load_rules, Classification};
 use crate::snapshot::{collect_snapshot, save_snapshot};
 
@@ -310,12 +311,15 @@ fn today_snapshot(directory: &Path, current: &Snapshot) -> Result<Option<Snapsho
         .timestamp
         .get(..10)
         .ok_or_else(|| anyhow!("snapshot timestamp is too short"))?;
-    let path = directory.join(format!("{day}.json"));
-    if path.exists() {
-        Ok(Some(load_snapshot(&path)?))
-    } else {
-        Ok(None)
-    }
+    let path = snapshot_paths(directory)?
+        .into_iter()
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.starts_with(day))
+        })
+        .last();
+    path.map(|path| load_snapshot(&path)).transpose()
 }
 
 fn largest_consumers(snapshot: &Snapshot, limit: usize) -> Vec<DirectoryUsage> {
@@ -719,8 +723,11 @@ fn save_if_new_day(snapshot: &Snapshot, directory: &Path) -> Result<Option<PathB
         .timestamp
         .get(..10)
         .ok_or_else(|| anyhow!("snapshot timestamp is too short"))?;
-    let destination = directory.join(format!("{day}.json"));
-    if destination.exists() {
+    if snapshot_paths(directory)?.into_iter().any(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with(day))
+    }) {
         return Ok(None);
     }
     save_snapshot(snapshot, directory).map(Some)

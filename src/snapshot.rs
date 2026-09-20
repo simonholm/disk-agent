@@ -14,11 +14,12 @@ pub const TOP_DIRECTORY_DEPTH: u8 = 3;
 
 pub fn save_snapshot(snapshot: &Snapshot, directory: &Path) -> Result<PathBuf> {
     fs::create_dir_all(directory)?;
-    let day = snapshot
+    let timestamp = snapshot
         .timestamp
-        .get(..10)
+        .get(..19)
         .ok_or_else(|| anyhow!("snapshot timestamp is too short"))?;
-    let destination = directory.join(format!("{day}.json"));
+    let filename = timestamp.replace('T', "_").replace(':', "-");
+    let destination = directory.join(format!("{filename}.json"));
     let temporary = destination.with_extension("json.tmp");
     write_snapshot_pretty(&temporary, snapshot)?;
     fs::rename(&temporary, &destination)?;

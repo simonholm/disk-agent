@@ -14,9 +14,7 @@ pub const SIGNIFICANT_BYTES: i64 = 50 * 1024 * 1024;
 pub fn latest_two_from(directory: &Path) -> Result<(Snapshot, Snapshot)> {
     let paths = snapshot_paths(directory)?;
     if paths.len() < 2 {
-        return Err(anyhow!(
-            "two snapshots are required; snapshots are stored once per day"
-        ));
+        return Err(anyhow!("two snapshots are required"));
     }
     let before = load_snapshot(&paths[paths.len() - 2])?;
     let after = load_snapshot(&paths[paths.len() - 1])?;

@@ -155,11 +155,21 @@ fn is_snapshot_name(path: &Path) -> bool {
         return false;
     };
     let bytes = name.as_bytes();
-    bytes.len() == 15
+    let date_is_valid = bytes.len() >= 10
         && bytes[4] == b'-'
         && bytes[7] == b'-'
-        && &bytes[10..] == b".json"
         && bytes[..4].iter().all(u8::is_ascii_digit)
         && bytes[5..7].iter().all(u8::is_ascii_digit)
-        && bytes[8..10].iter().all(u8::is_ascii_digit)
+        && bytes[8..10].iter().all(u8::is_ascii_digit);
+
+    date_is_valid
+        && ((bytes.len() == 15 && &bytes[10..] == b".json")
+            || (bytes.len() == 24
+                && bytes[10] == b'_'
+                && bytes[13] == b'-'
+                && bytes[16] == b'-'
+                && &bytes[19..] == b".json"
+                && bytes[11..13].iter().all(u8::is_ascii_digit)
+                && bytes[14..16].iter().all(u8::is_ascii_digit)
+                && bytes[17..19].iter().all(u8::is_ascii_digit)))
 }
