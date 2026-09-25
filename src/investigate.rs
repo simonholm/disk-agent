@@ -116,6 +116,10 @@ fn render_investigation_with_all_diagnostics(
     let recent_changes = today_baseline
         .map(|baseline| compare_snapshots(baseline, current))
         .unwrap_or_default();
+    let codex_package_growth = recent_changes.iter().any(|change| {
+        change.bytes > 0
+            && classify_path(&change.path, Some(&rules)).category == "Codex release/package growth"
+    });
     let recent_increases = non_overlapping(
         recent_changes
             .into_iter()
@@ -279,6 +283,8 @@ fn render_investigation_with_all_diagnostics(
         &assessment,
         &assessment_increases,
         &largest,
+        codex_package_growth
+            .then(|| classify_path("~/.codex/packages", Some(&rules)).recommendation),
     ));
     lines.join("\n").trim_end().to_string()
 }
@@ -656,8 +662,12 @@ fn recommendations(
     assessment: &str,
     recent_increases: &[UsageChange],
     largest: &[DirectoryUsage],
+    codex_package_recommendation: Option<String>,
 ) -> Vec<String> {
     let mut items = Vec::new();
+    if let Some(recommendation) = codex_package_recommendation {
+        items.push(recommendation);
+    }
     match assessment {
         "Large unclassified growth" => {
             if let Some(change) = recent_increases.first() {

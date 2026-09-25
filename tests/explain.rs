@@ -250,8 +250,90 @@ fn explain_handles_claude_growth_larger_than_its_local_parent_delta() {
     assert!(!output.contains("Unclassified growth"));
 }
 
+fn assert_codex_package_growth_recommendation(path: &str) {
+    let before = sample(18, 66, vec![("~", 0), (path, 0)]);
+    let after = sample(19, 69, vec![("~", 1536 * MIB), (path, 1536 * MIB)]);
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains(&format!("+1.5G {path}")));
+    assert!(output.contains("Codex release/package growth (+1.5G)"));
+    assert!(output.contains("codex-cache report"));
+    assert!(output.contains("codex-cache clean --dry-run --keep current"));
+}
+
 #[test]
-fn explain_uses_codex_runtime_retention_knowledge() {
+fn explain_recommends_codex_cache_for_standalone_release_growth() {
+    assert_codex_package_growth_recommendation("~/.codex/packages/standalone/releases");
+}
+
+#[test]
+fn explain_recommends_codex_cache_for_app_server_daemon_release_growth() {
+    assert_codex_package_growth_recommendation("~/.codex/packages/app-server-daemon/releases");
+}
+
+#[test]
+fn explain_attributes_codex_parent_growth_to_measured_package_growth() {
+    let before = sample(
+        18,
+        66,
+        vec![("~", 0), ("~/.codex", 0), ("~/.codex/packages", 0)],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 1536 * MIB),
+            ("~/.codex", 1536 * MIB),
+            ("~/.codex/packages", 1024 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("+1G ~/.codex/packages"));
+    assert!(output.contains("Codex release/package growth (+1G)"));
+    assert!(output.contains("codex-cache report"));
+    assert!(!output.contains("Codex release/package growth (+1.5G)"));
+}
+
+#[test]
+fn explain_omits_codex_cache_recommendation_below_growth_threshold() {
+    let path = "~/.codex/packages/standalone/releases";
+    let before = sample(18, 66, vec![("~", 0), (path, 0)]);
+    let after = sample(19, 66, vec![("~", 49 * MIB), (path, 49 * MIB)]);
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("No significant directory growth."));
+    assert!(!output.contains("codex-cache"));
+}
+
+#[test]
+fn explain_does_not_recommend_codex_cache_for_unrelated_application_growth() {
+    let before = sample(
+        18,
+        66,
+        vec![("~", 0), ("~/.local/share/claude/versions", 0)],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 1536 * MIB),
+            ("~/.local/share/claude/versions", 1536 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("Application releases (+1.5G)"));
+    assert!(!output.contains("Codex release/package growth"));
+    assert!(!output.contains("codex-cache"));
+}
+
+#[test]
+fn explain_does_not_attribute_codex_state_growth_to_packages() {
     let before = sample(18, 66, vec![("~", 0), ("~/.codex", 0)]);
     let after = sample(
         19,
@@ -274,9 +356,9 @@ fn explain_uses_codex_runtime_retention_knowledge() {
 
     let output = render_explanation_with_codex(&before, &after, Some(&codex));
 
-    assert!(output.contains("Growth is primarily due to Application releases (+3G)."));
+    assert!(output.contains("Growth is primarily due to Application data (+3G)."));
     assert!(output.contains("Risk:\nLow"));
-    assert!(output.contains("Review retained Codex releases."));
+    assert!(!output.contains("codex-cache"));
     assert!(!output.contains("Growth occurred in unclassified locations."));
     assert!(!output.contains("Inspect unclassified locations before taking cleanup action."));
 }
@@ -286,7 +368,12 @@ fn explain_omits_stale_unclassified_recommendation_for_small_residual_growth() {
     let before = sample(
         18,
         66,
-        vec![("~", 0), ("~/.copilot", 0), ("~/.codex", 0), ("~/other", 0)],
+        vec![
+            ("~", 0),
+            ("~/.copilot", 0),
+            ("~/.codex/packages", 0),
+            ("~/other", 0),
+        ],
     );
     let after = sample(
         19,
@@ -294,7 +381,7 @@ fn explain_omits_stale_unclassified_recommendation_for_small_residual_growth() {
         vec![
             ("~", 1050 * MIB),
             ("~/.copilot", 570 * MIB),
-            ("~/.codex", 358 * MIB),
+            ("~/.codex/packages", 358 * MIB),
             ("~/other", 122 * MIB),
         ],
     );
@@ -315,10 +402,10 @@ fn explain_omits_stale_unclassified_recommendation_for_small_residual_growth() {
     let output = render_explanation_with_codex(&before, &after, Some(&codex));
 
     assert!(output.contains(
-        "Growth is primarily due to Application runtime (+570M) and Application releases (+358M)."
+        "Growth is primarily due to Application runtime (+570M) and Codex release/package growth (+358M)."
     ));
     assert!(output.contains("Review the Copilot installation only if the growth is unexpected."));
-    assert!(output.contains("Review retained Codex releases."));
+    assert!(output.contains("codex-cache report"));
     assert!(!output.contains("Inspect unclassified locations before taking cleanup action."));
 }
 

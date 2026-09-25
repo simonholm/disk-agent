@@ -136,7 +136,5 @@ fn classify_contributors_with_codex(
 }
 
 fn is_codex_runtime_change(change: &UsageChange) -> bool {
-    change.path == "~/.codex"
-        || change.path == "~/.codex/packages"
-        || change.path.starts_with("~/.codex/packages/")
+    change.path == "~/.codex/packages" || change.path.starts_with("~/.codex/packages/")
 }

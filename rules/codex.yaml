@@ -7,20 +7,20 @@ explanation: |
 recommendation: Do not treat ~/.codex as disposable cache; inspect subdirectories before removing anything.
 ---
 pattern: ~/.codex/packages
-classification: Application releases
-category: Application releases
+classification: Codex release/package growth
+category: Codex release/package growth
 risk: Low
 explanation: |
-  Codex stores complete standalone releases. Multiple retained versions are expected after updates.
-recommendation: Review retained Codex releases.
+  Codex stores package releases under this directory.
+recommendation: If codex-cache is installed, run `codex-cache report` to inspect releases and `codex-cache clean --dry-run --keep current` to preview cleanup.
 ---
 pattern: ~/.codex/packages/standalone/releases
-classification: Codex application releases
-category: Application releases
+classification: Codex release/package growth
+category: Codex release/package growth
 risk: Low
 explanation: |
   Codex stores complete standalone releases in this version store.
-recommendation: Review retained Codex releases.
+recommendation: If codex-cache is installed, run `codex-cache report` to inspect releases and `codex-cache clean --dry-run --keep current` to preview cleanup.
 version_store: true
 version_entries: directories
 current_pointer: ~/.codex/packages/standalone/current

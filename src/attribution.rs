@@ -40,6 +40,15 @@ pub fn top_contributors(before: &Snapshot, after: &Snapshot, limit: usize) -> Ve
     let rules = load_rules();
     let descendants = candidates.clone();
     candidates.retain(|candidate| {
+        if candidate.path == "~/.codex"
+            && descendants.iter().any(|descendant| {
+                (descendant.path == "~/.codex/packages"
+                    || descendant.path.starts_with("~/.codex/packages/"))
+                    && descendant.bytes >= candidate.bytes / 2
+            })
+        {
+            return false;
+        }
         let classification = classify_path(&candidate.path, Some(&rules));
         classification.known
             || !descendants.iter().any(|descendant| {

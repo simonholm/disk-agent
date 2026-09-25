@@ -100,12 +100,13 @@ fn investigation_reads_like_operational_report() {
     assert!(output.contains("Changes since today's snapshot"));
     assert!(output.contains("Podman status"));
     assert!(output.contains("+838M ~/.codex/packages"));
-    assert!(output.contains("Application releases"));
+    assert!(output.contains("Codex release/package growth"));
     assert!(output.contains("Risk: Low"));
     assert!(output.contains("Assessment"));
     assert!(output.contains("Healthy"));
     assert!(output.contains("Recommendations"));
-    assert!(output.contains("No action required."));
+    assert!(output.contains("codex-cache report"));
+    assert!(output.contains("codex-cache clean --dry-run --keep current"));
     assert!(SUPPORTED_ASSESSMENTS.contains(&assessment_line(&output)));
     assert!(!output.contains("Growth:"));
     assert!(!output.contains("Shrinkage:"));
@@ -244,8 +245,64 @@ fn investigation_reports_codex_runtime_update_without_generic_investigation_pres
     assert!(output.contains("Runtime storage: 5G"));
     assert!(output.contains("Old releases: 2G"));
     assert_eq!(assessment_line(&output), "Healthy");
+    assert!(output.contains("codex-cache report"));
     assert!(!output
         .contains("Review the listed directories to determine whether the growth is expected."));
+}
+
+#[test]
+fn investigation_recommends_codex_cache_for_both_package_stores() {
+    for path in [
+        "~/.codex/packages/standalone/releases",
+        "~/.codex/packages/app-server-daemon/releases",
+    ] {
+        let mut before = sample(19, 62, 0);
+        before.home_usage.push(DirectoryUsage {
+            path: path.to_string(),
+            bytes: 0,
+        });
+        let mut after = sample(19, 62, 0);
+        after.home_usage.push(DirectoryUsage {
+            path: path.to_string(),
+            bytes: 1536 * 1024 * 1024,
+        });
+
+        let output = render_investigation(Some(&before), &after);
+
+        assert!(output.contains(&format!("+1.5G {path}")));
+        assert!(output.contains("Classification: Codex release/package growth"));
+        assert!(output.contains("codex-cache report"));
+        assert!(output.contains("codex-cache clean --dry-run --keep current"));
+    }
+}
+
+#[test]
+fn investigation_does_not_recommend_codex_cache_for_codex_state_growth() {
+    let before = sample(19, 62, 0);
+    let mut after = sample(19, 62, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/.codex".to_string(),
+        bytes: 1536 * 1024 * 1024,
+    });
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(output.contains("Classification: Codex persistent state/history"));
+    assert!(!output.contains("codex-cache"));
+}
+
+#[test]
+fn investigation_omits_codex_cache_recommendation_below_growth_threshold() {
+    let before = sample(19, 62, 0);
+    let mut after = sample(19, 62, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/.codex/packages".to_string(),
+        bytes: 49 * 1024 * 1024,
+    });
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(!output.contains("codex-cache"));
 }
 
 #[test]

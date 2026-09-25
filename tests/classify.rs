@@ -21,7 +21,7 @@ fn classifier_maps_common_paths_to_categories() {
             "Application releases",
         ),
         ("~/.codex", "Application data"),
-        ("~/.codex/packages/0.145.0", "Application releases"),
+        ("~/.codex/packages/0.145.0", "Codex release/package growth"),
         ("~/.local/share/Trash/files", "Trash"),
         ("~/.local/share/containers/storage", "Podman"),
         ("~/Downloads/archive.iso", "Downloads"),
@@ -98,7 +98,7 @@ fn classifier_marks_junie_and_codex_as_conservative_application_data() {
         .contains("Do not treat ~/.codex as disposable cache"));
 
     let codex_packages = classify_path("~/.codex/packages/0.145.0", Some(&rules));
-    assert_eq!(codex_packages.category, "Application releases");
+    assert_eq!(codex_packages.category, "Codex release/package growth");
 }
 
 #[test]
