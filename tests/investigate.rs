@@ -277,6 +277,99 @@ fn investigation_recommends_codex_cache_for_both_package_stores() {
 }
 
 #[test]
+fn investigation_classifies_copilot_package_growth_with_conservative_recommendation() {
+    const MIB: i64 = 1024 * 1024;
+    let mut before = sample(19, 62, 0);
+    before.home_usage.push(DirectoryUsage {
+        path: "~/.copilot".to_string(),
+        bytes: 290 * MIB,
+    });
+    before.copilot_usage.extend([
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64".to_string(),
+            bytes: 290 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.82".to_string(),
+            bytes: 147 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.83".to_string(),
+            bytes: 143 * MIB,
+        },
+    ]);
+    let mut after = sample(19, 62, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/.copilot".to_string(),
+        bytes: 773 * MIB,
+    });
+    after.copilot_usage.extend([
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64".to_string(),
+            bytes: 773 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.82".to_string(),
+            bytes: 147 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.83".to_string(),
+            bytes: 143 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.85".to_string(),
+            bytes: 158 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.86".to_string(),
+            bytes: 159 * MIB,
+        },
+        DirectoryUsage {
+            path: "~/.copilot/pkg/linux-x64/1.0.88".to_string(),
+            bytes: 166 * MIB,
+        },
+    ]);
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(output.contains("+483M ~/.copilot/pkg/linux-x64"));
+    assert!(output.contains("Classification: Copilot CLI release/package growth"));
+    assert!(output.contains("Observed package versions: 1.0.82, 1.0.83, 1.0.85, 1.0.86, 1.0.88"));
+    assert!(output
+        .contains("Inspect retained Copilot CLI package versions under ~/.copilot/pkg/linux-x64"));
+    assert!(!output.contains("copilot clean"));
+    assert!(!output.contains("Active version:"));
+}
+
+#[test]
+fn investigation_does_not_classify_unrelated_copilot_state_as_packages() {
+    let mut before = sample(19, 62, 0);
+    before.home_usage.push(DirectoryUsage {
+        path: "~/.copilot".to_string(),
+        bytes: 300 * 1024 * 1024,
+    });
+    before.copilot_usage.push(DirectoryUsage {
+        path: "~/.copilot/pkg/linux-x64".to_string(),
+        bytes: 300 * 1024 * 1024,
+    });
+    let mut after = sample(19, 62, 0);
+    after.home_usage.push(DirectoryUsage {
+        path: "~/.copilot".to_string(),
+        bytes: 900 * 1024 * 1024,
+    });
+    after.copilot_usage.push(DirectoryUsage {
+        path: "~/.copilot/pkg/linux-x64".to_string(),
+        bytes: 300 * 1024 * 1024,
+    });
+
+    let output = render_investigation(Some(&before), &after);
+
+    assert!(output.contains("Classification: GitHub Copilot runtime"));
+    assert!(!output.contains("Classification: Copilot CLI release/package growth"));
+    assert!(!output.contains("Inspect retained Copilot CLI package versions"));
+}
+
+#[test]
 fn investigation_does_not_recommend_codex_cache_for_codex_state_growth() {
     let before = sample(19, 62, 0);
     let mut after = sample(19, 62, 0);

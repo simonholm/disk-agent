@@ -22,6 +22,11 @@ fn classifier_maps_common_paths_to_categories() {
         ),
         ("~/.codex", "Application data"),
         ("~/.codex/packages/0.145.0", "Codex release/package growth"),
+        (
+            "~/.copilot/pkg/linux-x64/1.0.88",
+            "Copilot CLI release/package growth",
+        ),
+        ("~/.copilot/state", "Application runtime"),
         ("~/.local/share/Trash/files", "Trash"),
         ("~/.local/share/containers/storage", "Podman"),
         ("~/Downloads/archive.iso", "Downloads"),

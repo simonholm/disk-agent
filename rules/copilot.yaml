@@ -5,3 +5,11 @@ risk: Low
 explanation: |
   GitHub Copilot stores installation and runtime files under this directory.
 recommendation: Review the Copilot installation only if the growth is unexpected.
+---
+pattern: ~/.copilot/pkg/linux-x64
+classification: Copilot CLI release/package growth
+category: Copilot CLI release/package growth
+risk: Low
+explanation: |
+  GitHub Copilot CLI stores package versions under this directory.
+recommendation: Inspect retained Copilot CLI package versions under ~/.copilot/pkg/linux-x64 before considering manual removal.

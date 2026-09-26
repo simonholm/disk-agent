@@ -70,7 +70,7 @@ pub fn collect_snapshot() -> Result<Snapshot> {
     let home = paths::home_dir()?;
     let (home_usage, mut warnings) = collect_du(&home, 2)?;
     let (local_share_usage, local_warnings) = collect_du(&home.join(".local").join("share"), 2)?;
-    let (copilot_usage, copilot_warnings) = collect_du(&home.join(".copilot"), 2)?;
+    let (copilot_usage, copilot_warnings) = collect_du(&home.join(".copilot"), 3)?;
     let (top_usage, top_warnings) = collect_du(&home, TOP_DIRECTORY_DEPTH)?;
     warnings.extend(local_warnings);
     warnings.extend(copilot_warnings);

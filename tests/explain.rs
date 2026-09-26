@@ -298,6 +298,76 @@ fn explain_attributes_codex_parent_growth_to_measured_package_growth() {
 }
 
 #[test]
+fn explain_attributes_copilot_parent_growth_to_retained_package_versions() {
+    let before = sample(
+        18,
+        66,
+        vec![
+            ("~", 290 * MIB),
+            ("~/.copilot", 290 * MIB),
+            ("~/.copilot/pkg/linux-x64", 290 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.82", 147 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.83", 143 * MIB),
+        ],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 773 * MIB),
+            ("~/.copilot", 773 * MIB),
+            ("~/.copilot/pkg/linux-x64", 773 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.82", 147 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.83", 143 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.85", 158 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.86", 159 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.88", 166 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("+483M ~/.copilot/pkg/linux-x64"));
+    assert!(output.contains("Copilot CLI release/package growth (+483M)"));
+    assert!(output
+        .contains("Inspect retained Copilot CLI package versions under ~/.copilot/pkg/linux-x64"));
+    assert!(!output.contains("Application runtime (+483M)"));
+    assert!(!output.contains("copilot clean"));
+}
+
+#[test]
+fn explain_keeps_unrelated_copilot_state_growth_as_application_runtime() {
+    let before = sample(
+        18,
+        66,
+        vec![
+            ("~", 300 * MIB),
+            ("~/.copilot", 300 * MIB),
+            ("~/.copilot/pkg/linux-x64", 300 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.86", 150 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.88", 150 * MIB),
+        ],
+    );
+    let after = sample(
+        19,
+        69,
+        vec![
+            ("~", 900 * MIB),
+            ("~/.copilot", 900 * MIB),
+            ("~/.copilot/pkg/linux-x64", 300 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.86", 150 * MIB),
+            ("~/.copilot/pkg/linux-x64/1.0.88", 150 * MIB),
+        ],
+    );
+
+    let output = render_explanation(&before, &after);
+
+    assert!(output.contains("Application runtime (+600M)"));
+    assert!(!output.contains("Copilot CLI release/package growth"));
+    assert!(!output.contains("Inspect retained Copilot CLI package versions"));
+}
+
+#[test]
 fn explain_omits_codex_cache_recommendation_below_growth_threshold() {
     let path = "~/.codex/packages/standalone/releases";
     let before = sample(18, 66, vec![("~", 0), (path, 0)]);

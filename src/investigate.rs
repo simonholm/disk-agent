@@ -32,8 +32,11 @@ pub fn non_overlapping(changes: Vec<UsageChange>) -> Vec<UsageChange> {
                 && child.bytes > 0
                 && classify_path(&child.path, Some(&rules)).known
                 && child.bytes >= change.bytes.abs() / 2
+                && (change.path != "~/.copilot"
+                    || child.path == "~/.copilot/pkg/linux-x64"
+                    || is_child_path(&child.path, "~/.copilot/pkg/linux-x64"))
         });
-        if known_children && (!classification.known || is_codex_state_parent(change)) {
+        if known_children && (!classification.known || is_package_state_parent(change)) {
             continue;
         }
         if result
@@ -47,8 +50,8 @@ pub fn non_overlapping(changes: Vec<UsageChange>) -> Vec<UsageChange> {
     result
 }
 
-fn is_codex_state_parent(change: &UsageChange) -> bool {
-    change.path == "~/.codex"
+fn is_package_state_parent(change: &UsageChange) -> bool {
+    change.path == "~/.codex" || change.path == "~/.copilot"
 }
 
 pub fn cause(change: &UsageChange, classification: &Classification, snapshot: &Snapshot) -> String {
@@ -120,6 +123,11 @@ fn render_investigation_with_all_diagnostics(
         change.bytes > 0
             && classify_path(&change.path, Some(&rules)).category == "Codex release/package growth"
     });
+    let copilot_package_growth = recent_changes.iter().any(|change| {
+        change.bytes > 0
+            && classify_path(&change.path, Some(&rules)).category
+                == "Copilot CLI release/package growth"
+    });
     let recent_increases = non_overlapping(
         recent_changes
             .into_iter()
@@ -177,6 +185,15 @@ fn render_investigation_with_all_diagnostics(
                     format!("Classification: {}", classification.classification),
                     format!("Risk: {}", classification.risk),
                 ]);
+                if classification.category == "Copilot CLI release/package growth" {
+                    let versions = child_names(current, "~/.copilot/pkg/linux-x64");
+                    if versions.len() > 1 {
+                        lines.push(format!(
+                            "Observed package versions: {}",
+                            versions.join(", ")
+                        ));
+                    }
+                }
                 lines.push(String::new());
             }
         }
@@ -285,6 +302,8 @@ fn render_investigation_with_all_diagnostics(
         &largest,
         codex_package_growth
             .then(|| classify_path("~/.codex/packages", Some(&rules)).recommendation),
+        copilot_package_growth
+            .then(|| classify_path("~/.copilot/pkg/linux-x64", Some(&rules)).recommendation),
     ));
     lines.join("\n").trim_end().to_string()
 }
@@ -663,9 +682,13 @@ fn recommendations(
     recent_increases: &[UsageChange],
     largest: &[DirectoryUsage],
     codex_package_recommendation: Option<String>,
+    copilot_package_recommendation: Option<String>,
 ) -> Vec<String> {
     let mut items = Vec::new();
     if let Some(recommendation) = codex_package_recommendation {
+        items.push(recommendation);
+    }
+    if let Some(recommendation) = copilot_package_recommendation {
         items.push(recommendation);
     }
     match assessment {
