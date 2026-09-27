@@ -3,7 +3,88 @@ use std::path::Path;
 
 use anyhow::Result;
 
+use crate::command::{CommandRunner, SystemCommandRunner};
 use crate::paths;
+use crate::release_store::ReleaseStore;
+
+pub const STANDALONE_STORE: &str = "Codex standalone";
+pub const DAEMON_STORE: &str = "Codex app-server-daemon";
+
+pub fn installed_cli_version() -> Result<Option<String>> {
+    let output = SystemCommandRunner.run(&["codex", "--version"])?;
+    Ok((output.status == 0)
+        .then(|| parse_cli_version(&output.stdout))
+        .flatten())
+}
+
+pub fn package_store_name(store: &ReleaseStore) -> Option<&'static str> {
+    match store.name.as_str() {
+        STANDALONE_STORE => Some("standalone"),
+        DAEMON_STORE => Some("app-server-daemon"),
+        _ => None,
+    }
+}
+
+pub fn has_retained_versions(stores: &[&ReleaseStore]) -> bool {
+    stores.iter().any(|store| {
+        store
+            .entries
+            .iter()
+            .filter(|entry| package_release_version(&entry.name).is_some())
+            .take(2)
+            .count()
+            > 1
+    })
+}
+
+pub fn older_generation_bytes(stores: &[&ReleaseStore], installed: Option<&str>) -> Option<i64> {
+    let installed_key = version_key(installed?)?;
+    if stores.len() != 2
+        || !stores.iter().any(|store| store.name == STANDALONE_STORE)
+        || !stores.iter().any(|store| store.name == DAEMON_STORE)
+        || !has_retained_versions(stores)
+    {
+        return None;
+    }
+    let mut older_bytes = 0;
+    for store in stores {
+        let versions = store
+            .entries
+            .iter()
+            .map(|entry| package_release_version(&entry.name))
+            .collect::<Option<Vec<_>>>()?;
+        if versions.iter().max() != Some(&installed_key) {
+            return None;
+        }
+        older_bytes += store
+            .entries
+            .iter()
+            .zip(versions)
+            .filter(|(_, version)| *version < installed_key)
+            .map(|(entry, _)| entry.bytes)
+            .sum::<i64>();
+    }
+    Some(older_bytes)
+}
+
+fn parse_cli_version(output: &str) -> Option<String> {
+    let version = output.trim().strip_prefix("codex-cli ")?;
+    version_key(version).map(|_| version.to_string())
+}
+
+fn version_key(version: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = version.split('.').map(str::parse::<u64>);
+    let key = (
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+        parts.next()?.ok()?,
+    );
+    parts.next().is_none().then_some(key)
+}
+
+pub(crate) fn package_release_version(name: &str) -> Option<(u64, u64, u64)> {
+    release_version(name).and_then(|version| version_key(&version))
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CodexStandalone {
@@ -143,7 +224,68 @@ mod tests {
     use std::os::unix::fs::symlink;
     use std::path::Path;
 
-    use super::detect_codex_standalone_at;
+    use super::{
+        detect_codex_standalone_at, has_retained_versions, older_generation_bytes,
+        package_store_name, parse_cli_version,
+    };
+    use crate::release_store::{detect_release_stores_at, ReleaseStore};
+    use crate::rules::load_rules;
+
+    const MIB: i64 = 1024 * 1024;
+
+    #[test]
+    fn two_matching_package_stores_estimate_older_generation() {
+        let home = tempfile::tempdir().unwrap();
+        for store in ["standalone", "app-server-daemon"] {
+            let root = home.path().join(".codex/packages").join(store);
+            write_release(
+                &root,
+                "0.157.0-x86_64-unknown-linux-musl",
+                (374 * MIB) as usize,
+            );
+            write_release(
+                &root,
+                "0.157.1-x86_64-unknown-linux-musl",
+                (374 * MIB) as usize,
+            );
+        }
+
+        let mut detected = package_stores(home.path());
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert_eq!(stores.len(), 2);
+        assert!(has_retained_versions(&stores));
+        assert_eq!(
+            older_generation_bytes(&stores, Some("0.157.1")),
+            Some(748 * MIB)
+        );
+        assert_eq!(older_generation_bytes(&stores, None), None);
+        assert_eq!(older_generation_bytes(&stores[..1], Some("0.157.1")), None);
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.0")), None);
+        assert_eq!(
+            parse_cli_version("codex-cli 0.157.1\n"),
+            Some("0.157.1".into())
+        );
+
+        detected[1].entries[1].name = "0.157.2-x86_64-unknown-linux-musl".into();
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
+
+        detected[1].entries[1].name = "0.157.1-x86_64-unknown-linux-musl".into();
+        for store in &mut detected {
+            store.entries[0].name = "latest".into();
+        }
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert!(!has_retained_versions(&stores));
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
+    }
+
+    fn package_stores(home: &Path) -> Vec<ReleaseStore> {
+        detect_release_stores_at(home, &load_rules())
+            .unwrap()
+            .into_iter()
+            .filter(|store| package_store_name(store).is_some())
+            .collect()
+    }
 
     #[test]
     fn no_installation_returns_none() {
@@ -212,6 +354,7 @@ mod tests {
     fn write_release(root: &Path, name: &str, bytes: usize) {
         let release = root.join("releases").join(name);
         fs::create_dir_all(&release).unwrap();
-        fs::write(release.join("payload"), vec![b'x'; bytes]).unwrap();
+        let payload = fs::File::create(release.join("payload")).unwrap();
+        payload.set_len(bytes as u64).unwrap();
     }
 }

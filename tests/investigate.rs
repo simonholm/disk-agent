@@ -1,9 +1,10 @@
 use disk_agent::cargo::CargoTargetDiagnostic;
 use disk_agent::classify::classify_path;
-use disk_agent::codex::{CodexRelease, CodexStandalone};
+use disk_agent::codex::{CodexRelease, CodexStandalone, DAEMON_STORE, STANDALONE_STORE};
 use disk_agent::investigate::{
     assess, render_investigation, render_investigation_with_codex,
-    render_investigation_with_diagnostics, render_investigation_with_release_stores,
+    render_investigation_with_codex_packages, render_investigation_with_diagnostics,
+    render_investigation_with_release_stores,
 };
 use disk_agent::models::{
     DirectoryUsage, FilesystemUsage, PodmanContainerUsage, PodmanUsage, Snapshot, UsageChange,
@@ -136,6 +137,63 @@ fn investigation_omits_codex_section_for_one_standalone_release() {
     let output = render_investigation_with_codex(None, &sample(19, 62, 0), Some(&codex));
 
     assert!(!output.contains("Codex\n"));
+}
+
+#[test]
+fn investigation_reports_codex_package_generations_conservatively() {
+    const MIB: i64 = 1024 * 1024;
+    let stores = [STANDALONE_STORE, DAEMON_STORE]
+        .into_iter()
+        .map(|name| ReleaseStore {
+            name: name.to_string(),
+            entries: ["0.157.0", "0.157.1"]
+                .into_iter()
+                .map(|version| ReleaseEntry {
+                    name: format!("{version}-x86_64-unknown-linux-musl"),
+                    bytes: 374 * MIB,
+                })
+                .collect(),
+            active_entry: None,
+        })
+        .collect::<Vec<_>>();
+    let snapshot = sample(19, 62, 0);
+    let output =
+        render_investigation_with_codex_packages(None, &snapshot, &stores, Some("0.157.1"));
+    assert!(output.contains("Codex CLI packages\n\nInstalled CLI version: 0.157.1"));
+    assert!(output.contains("standalone:\n  0.157.0-x86_64-unknown-linux-musl (374M)"));
+    assert!(output.contains("app-server-daemon:\n  0.157.0-x86_64-unknown-linux-musl (374M)"));
+    assert!(output.contains("Observed release storage: 1.5G"));
+    assert!(output.contains("Older generations potentially reclaimable: 748M"));
+    assert!(output.contains("Review package use and rollback needs before removing anything."));
+
+    let mut mismatch = stores.clone();
+    mismatch[1].entries[1].name = "0.157.2-x86_64-unknown-linux-musl".into();
+    let output =
+        render_investigation_with_codex_packages(None, &snapshot, &mismatch, Some("0.157.1"));
+    assert!(output.contains("0.157.2-x86_64-unknown-linux-musl (374M)"));
+    assert!(output.contains("Package versions do not confirm an older generation"));
+    assert!(!output.contains("potentially reclaimable"));
+
+    let mut single = stores.clone();
+    for store in &mut single {
+        store.entries.remove(0);
+    }
+    let output =
+        render_investigation_with_codex_packages(None, &snapshot, &single, Some("0.157.1"));
+    assert!(!output.contains("Codex CLI packages"));
+
+    let mut notable = stores;
+    notable[0]
+        .entries
+        .extend(["0.156.0", "0.156.1"].map(|version| ReleaseEntry {
+            name: version.to_string(),
+            bytes: 374 * MIB,
+        }));
+    notable[0].active_entry = Some("0.157.1-x86_64-unknown-linux-musl".to_string());
+    let output =
+        render_investigation_with_codex_packages(None, &snapshot, &notable, Some("0.157.1"));
+    assert!(output.contains("Codex CLI packages"));
+    assert!(!output.contains("Retained application versions"));
 }
 
 #[test]

@@ -4,7 +4,10 @@ use anyhow::{anyhow, Result};
 
 use crate::cargo::{detect_stale_cargo_targets, CargoTargetDiagnostic};
 use crate::classify::{classify_path, is_child_path};
-use crate::codex::CodexStandalone;
+use crate::codex::{
+    has_retained_versions, installed_cli_version, older_generation_bytes, package_release_version,
+    package_store_name, CodexStandalone,
+};
 use crate::diff::compare_snapshots;
 use crate::json::load_snapshot;
 use crate::models::{DirectoryUsage, Snapshot, UsageChange};
@@ -85,12 +88,35 @@ pub fn render_investigation_with_codex(
     render_investigation_with_diagnostics(today_baseline, current, codex_standalone, &[])
 }
 
+pub fn render_investigation_with_codex_packages(
+    today_baseline: Option<&Snapshot>,
+    current: &Snapshot,
+    release_stores: &[ReleaseStore],
+    installed_version: Option<&str>,
+) -> String {
+    render_investigation_with_all_diagnostics(
+        today_baseline,
+        current,
+        None,
+        release_stores,
+        &[],
+        installed_version,
+    )
+}
+
 pub fn render_investigation_with_release_stores(
     today_baseline: Option<&Snapshot>,
     current: &Snapshot,
     release_stores: &[ReleaseStore],
 ) -> String {
-    render_investigation_with_all_diagnostics(today_baseline, current, None, release_stores, &[])
+    render_investigation_with_all_diagnostics(
+        today_baseline,
+        current,
+        None,
+        release_stores,
+        &[],
+        None,
+    )
 }
 
 pub fn render_investigation_with_diagnostics(
@@ -105,6 +131,7 @@ pub fn render_investigation_with_diagnostics(
         codex_standalone,
         &[],
         cargo_targets,
+        None,
     )
 }
 
@@ -114,6 +141,7 @@ fn render_investigation_with_all_diagnostics(
     codex_standalone: Option<&CodexStandalone>,
     release_stores: &[ReleaseStore],
     cargo_targets: &[CargoTargetDiagnostic],
+    installed_version: Option<&str>,
 ) -> String {
     let rules = load_rules();
     let recent_changes = today_baseline
@@ -216,9 +244,22 @@ fn render_investigation_with_all_diagnostics(
         ));
     }
 
+    let codex_stores = release_stores
+        .iter()
+        .filter(|store| package_store_name(store).is_some())
+        .collect::<Vec<_>>();
+    if has_retained_versions(&codex_stores) {
+        lines.extend([
+            String::new(),
+            "Codex CLI packages".to_string(),
+            String::new(),
+        ]);
+        lines.extend(codex_packages_status(&codex_stores, installed_version));
+    }
+
     let notable_stores = release_stores
         .iter()
-        .filter(|store| store.is_notable())
+        .filter(|store| package_store_name(store).is_none() && store.is_notable())
         .collect::<Vec<_>>();
     if !notable_stores.is_empty() {
         lines.extend([
@@ -314,6 +355,7 @@ pub fn investigate_command() -> Result<String> {
     let today_baseline = today_snapshot(&directory, &current)?;
     let saved = save_if_new_day(&current, &directory)?;
     let release_stores = detect_release_stores()?;
+    let installed_version = installed_cli_version()?;
     let cargo_targets = detect_stale_cargo_targets(&current)?;
 
     let report = render_investigation_with_all_diagnostics(
@@ -322,6 +364,7 @@ pub fn investigate_command() -> Result<String> {
         None,
         &release_stores,
         &cargo_targets,
+        installed_version.as_deref(),
     );
     Ok(match saved {
         None => format!(
@@ -329,6 +372,50 @@ pub fn investigate_command() -> Result<String> {
         ),
         Some(path) => format!("{report}\n\nSnapshot stored: {}", path.display()),
     })
+}
+
+fn codex_packages_status(stores: &[&ReleaseStore], installed_version: Option<&str>) -> Vec<String> {
+    let mut lines = vec![format!(
+        "Installed CLI version: {}",
+        installed_version.unwrap_or("unavailable")
+    )];
+    for store in stores {
+        lines.push(format!(
+            "{}:",
+            package_store_name(store).unwrap_or("unknown")
+        ));
+        for release in store
+            .entries
+            .iter()
+            .filter(|entry| package_release_version(&entry.name).is_some())
+        {
+            lines.push(format!(
+                "  {} ({})",
+                release.name,
+                crate::output::format_bytes(Some(release.bytes), false)
+            ));
+        }
+    }
+    let total_bytes = stores
+        .iter()
+        .flat_map(|store| &store.entries)
+        .filter(|entry| package_release_version(&entry.name).is_some())
+        .map(|release| release.bytes)
+        .sum();
+    lines.push(format!(
+        "Observed release storage: {}",
+        crate::output::format_bytes(Some(total_bytes), false)
+    ));
+    if let Some(bytes) = older_generation_bytes(stores, installed_version) {
+        lines.push(format!(
+            "Older generations potentially reclaimable: {}",
+            crate::output::format_bytes(Some(bytes), false)
+        ));
+    } else {
+        lines.push("Package versions do not confirm an older generation for this CLI.".to_string());
+    }
+    lines.push("Review package use and rollback needs before removing anything.".to_string());
+    lines
 }
 
 fn today_snapshot(directory: &Path, current: &Snapshot) -> Result<Option<Snapshot>> {

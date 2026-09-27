@@ -23,6 +23,10 @@ fn classifier_maps_common_paths_to_categories() {
         ("~/.codex", "Application data"),
         ("~/.codex/packages/0.145.0", "Codex release/package growth"),
         (
+            "~/.codex/packages/app-server-daemon/releases/0.157.1-x86_64-unknown-linux-musl",
+            "Codex release/package growth",
+        ),
+        (
             "~/.copilot/pkg/linux-x64/1.0.88",
             "Copilot CLI release/package growth",
         ),

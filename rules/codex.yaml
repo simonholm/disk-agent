@@ -24,4 +24,15 @@ recommendation: If codex-cache is installed, run `codex-cache report` to inspect
 version_store: true
 version_entries: directories
 current_pointer: ~/.codex/packages/standalone/current
-store_name: Codex
+store_name: Codex standalone
+---
+pattern: ~/.codex/packages/app-server-daemon/releases
+classification: Codex release/package growth
+category: Codex release/package growth
+risk: Low
+explanation: |
+  Codex stores app-server-daemon releases in this version store.
+recommendation: If codex-cache is installed, run `codex-cache report` to inspect releases and `codex-cache clean --dry-run --keep current` to preview cleanup.
+version_store: true
+version_entries: directories
+store_name: Codex app-server-daemon
