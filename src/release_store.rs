@@ -19,6 +19,8 @@ pub struct ReleaseStore {
     pub name: String,
     pub entries: Vec<ReleaseEntry>,
     pub active_entry: Option<String>,
+    /// A configured pointer with no active entry is unresolved.
+    pub current_pointer_configured: bool,
 }
 
 impl ReleaseStore {
@@ -45,12 +47,54 @@ impl ReleaseStore {
         })
     }
 
+    /// Estimate only ordered stable versions, keeping current and one previous version.
+    pub fn reclaimable_bytes(&self) -> Option<i64> {
+        let active = version_key(self.active_entry.as_deref()?)?;
+        let versions = self
+            .entries
+            .iter()
+            .map(|entry| version_key(&entry.name))
+            .collect::<Option<Vec<_>>>()?;
+        if versions.iter().max() != Some(&active) {
+            return None;
+        }
+        let unique = versions.iter().collect::<std::collections::BTreeSet<_>>();
+        if unique.len() != versions.len() {
+            return None;
+        }
+        let previous = versions.iter().filter(|version| **version < active).max();
+        Some(
+            self.entries
+                .iter()
+                .zip(&versions)
+                .filter(|(_, version)| previous.is_some_and(|previous| *version < previous))
+                .map(|(entry, _)| entry.bytes)
+                .sum(),
+        )
+    }
+
     pub fn is_notable(&self) -> bool {
         match (self.inactive_entry_count(), self.inactive_storage_bytes()) {
             (Some(count), Some(bytes)) => count >= 3 && bytes >= MIN_RETAINED_BYTES,
             _ => self.entries.len() >= 4 && self.total_storage_bytes() >= MIN_RETAINED_BYTES,
         }
     }
+}
+
+pub(crate) fn version_key(version: &str) -> Option<(u64, u64, u64)> {
+    let parts = version.split('.').collect::<Vec<_>>();
+    if parts.len() != 3
+        || parts
+            .iter()
+            .any(|part| part.is_empty() || !part.bytes().all(|byte| byte.is_ascii_digit()))
+    {
+        return None;
+    }
+    Some((
+        parts[0].parse().ok()?,
+        parts[1].parse().ok()?,
+        parts[2].parse().ok()?,
+    ))
 }
 
 pub fn detect_release_stores() -> Result<Vec<ReleaseStore>> {
@@ -112,6 +156,7 @@ fn detect_release_store_at(home: &Path, rule: &Rule) -> Result<Option<ReleaseSto
             .unwrap_or_else(|| rule.pattern.clone()),
         entries,
         active_entry,
+        current_pointer_configured: rule.current_pointer.is_some(),
     }))
 }
 
@@ -280,6 +325,7 @@ mod tests {
             name: "Known".to_string(),
             entries,
             active_entry: Some("3".to_string()),
+            current_pointer_configured: true,
         };
         assert!(known.is_notable());
 
@@ -293,6 +339,7 @@ mod tests {
                 4
             ],
             active_entry: None,
+            current_pointer_configured: false,
         };
         assert!(unknown.is_notable());
     }
@@ -312,7 +359,59 @@ mod tests {
                 },
             ],
             active_entry: Some("current".to_string()),
+            current_pointer_configured: true,
         };
         assert!(!store.is_notable());
+    }
+
+    #[test]
+    fn reclaimability_keeps_current_and_numeric_previous_and_rejects_ambiguity() {
+        let mut store = ReleaseStore {
+            name: "Claude".into(),
+            entries: ["2.1.8", "2.1.9", "2.1.10", "2.1.11"]
+                .map(|name| ReleaseEntry {
+                    name: name.into(),
+                    bytes: 256 * 1024 * 1024,
+                })
+                .to_vec(),
+            active_entry: Some("2.1.11".into()),
+            current_pointer_configured: true,
+        };
+        assert_eq!(store.reclaimable_bytes(), Some(MIN_RETAINED_BYTES));
+        store.active_entry = None;
+        assert_eq!(store.reclaimable_bytes(), None);
+        store.active_entry = Some("2.1.99".into());
+        assert_eq!(store.reclaimable_bytes(), None);
+        store.active_entry = Some("2.1.9".into());
+        assert_eq!(store.reclaimable_bytes(), None);
+        store.active_entry = Some("2.1.11".into());
+        store.entries[0].name = "2.1.8-beta".into();
+        assert_eq!(store.reclaimable_bytes(), None);
+        store.entries[0].name = "2.1.9".into();
+        assert_eq!(store.reclaimable_bytes(), None);
+        store.entries.drain(..2);
+        assert_eq!(store.reclaimable_bytes(), Some(0));
+    }
+
+    #[test]
+    fn configured_copilot_store_detects_accumulation_without_claiming_current() {
+        let home = tempfile::tempdir().unwrap();
+        let root = home.path().join(".copilot/pkg/linux-x64");
+        for version in ["1.0.87", "1.0.88", "1.0.89", "1.0.90"] {
+            fs::create_dir_all(root.join(version)).unwrap();
+            fs::File::create(root.join(version).join("copilot"))
+                .unwrap()
+                .set_len((MIN_RETAINED_BYTES / 4) as u64)
+                .unwrap();
+        }
+        let stores = detect_release_stores_at(home.path(), &crate::rules::load_rules()).unwrap();
+        assert_eq!(stores.len(), 1);
+        assert_eq!(stores[0].name, "GitHub Copilot CLI");
+        assert!(stores[0].is_notable());
+        assert_eq!(stores[0].active_entry, None);
+        assert_eq!(stores[0].reclaimable_bytes(), None);
+        fs::remove_dir_all(root.join("1.0.87")).unwrap();
+        let stores = detect_release_stores_at(home.path(), &crate::rules::load_rules()).unwrap();
+        assert!(!stores[0].is_notable());
     }
 }

@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use crate::command::{CommandRunner, SystemCommandRunner};
 use crate::paths;
-use crate::release_store::ReleaseStore;
+use crate::release_store::{version_key, ReleaseStore};
 
 pub const STANDALONE_STORE: &str = "Codex standalone";
 pub const DAEMON_STORE: &str = "Codex app-server-daemon";
@@ -48,6 +48,30 @@ pub fn older_generation_bytes(stores: &[&ReleaseStore], installed: Option<&str>)
     }
     let mut older_bytes = 0;
     for store in stores {
+        if store.current_pointer_configured && store.active_entry.is_none() {
+            return None;
+        }
+        let suffix = store
+            .entries
+            .first()?
+            .name
+            .split_once('-')
+            .map(|(_, suffix)| suffix);
+        if suffix.is_some_and(|suffix| {
+            !matches!(
+                suffix,
+                "x86_64-unknown-linux-musl"
+                    | "aarch64-unknown-linux-musl"
+                    | "x86_64-unknown-linux-gnu"
+                    | "aarch64-unknown-linux-gnu"
+            )
+        }) || store
+            .entries
+            .iter()
+            .any(|entry| entry.name.split_once('-').map(|(_, suffix)| suffix) != suffix)
+        {
+            return None;
+        }
         let versions = store
             .entries
             .iter()
@@ -56,11 +80,32 @@ pub fn older_generation_bytes(stores: &[&ReleaseStore], installed: Option<&str>)
         if versions.iter().max() != Some(&installed_key) {
             return None;
         }
+        if store
+            .active_entry
+            .as_deref()
+            .is_some_and(|active| package_release_version(active) != Some(installed_key))
+        {
+            return None;
+        }
+        // Ambiguous platform variants must not be treated as removable generations.
+        if versions
+            .iter()
+            .collect::<std::collections::BTreeSet<_>>()
+            .len()
+            != versions.len()
+        {
+            return None;
+        }
+        let previous = versions
+            .iter()
+            .filter(|version| **version < installed_key)
+            .max()
+            .copied();
         older_bytes += store
             .entries
             .iter()
             .zip(versions)
-            .filter(|(_, version)| *version < installed_key)
+            .filter(|(_, version)| previous.is_some_and(|previous| *version < previous))
             .map(|(entry, _)| entry.bytes)
             .sum::<i64>();
     }
@@ -70,16 +115,6 @@ pub fn older_generation_bytes(stores: &[&ReleaseStore], installed: Option<&str>)
 fn parse_cli_version(output: &str) -> Option<String> {
     let version = output.trim().strip_prefix("codex-cli ")?;
     version_key(version).map(|_| version.to_string())
-}
-
-fn version_key(version: &str) -> Option<(u64, u64, u64)> {
-    let mut parts = version.split('.').map(str::parse::<u64>);
-    let key = (
-        parts.next()?.ok()?,
-        parts.next()?.ok()?,
-        parts.next()?.ok()?,
-    );
-    parts.next().is_none().then_some(key)
 }
 
 pub(crate) fn package_release_version(name: &str) -> Option<(u64, u64, u64)> {
@@ -250,14 +285,16 @@ mod tests {
             );
         }
 
+        symlink(
+            "releases/0.157.1-x86_64-unknown-linux-musl",
+            home.path().join(".codex/packages/standalone/current"),
+        )
+        .unwrap();
         let mut detected = package_stores(home.path());
         let stores = detected.iter().collect::<Vec<_>>();
         assert_eq!(stores.len(), 2);
         assert!(has_retained_versions(&stores));
-        assert_eq!(
-            older_generation_bytes(&stores, Some("0.157.1")),
-            Some(748 * MIB)
-        );
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), Some(0));
         assert_eq!(older_generation_bytes(&stores, None), None);
         assert_eq!(older_generation_bytes(&stores[..1], Some("0.157.1")), None);
         assert_eq!(older_generation_bytes(&stores, Some("0.157.0")), None);
@@ -266,17 +303,116 @@ mod tests {
             Some("0.157.1".into())
         );
 
+        for store in &mut detected {
+            store.entries.push(crate::release_store::ReleaseEntry {
+                name: "0.156.9-x86_64-unknown-linux-musl".into(),
+                bytes: 100 * MIB,
+            });
+        }
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert_eq!(
+            older_generation_bytes(&stores, Some("0.157.1")),
+            Some(200 * MIB)
+        );
+
         detected[1].entries[1].name = "0.157.2-x86_64-unknown-linux-musl".into();
         let stores = detected.iter().collect::<Vec<_>>();
         assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
 
         detected[1].entries[1].name = "0.157.1-x86_64-unknown-linux-musl".into();
+        detected[0].active_entry = Some("0.157.0-x86_64-unknown-linux-musl".into());
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
+        detected[0].active_entry = Some("0.157.1-x86_64-unknown-linux-musl".into());
+        detected[0].entries[2].name = "0.156.9-aarch64-unknown-linux-musl".into();
+        let stores = detected.iter().collect::<Vec<_>>();
+        assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
+        detected[0].entries[2].name = "0.156.9-x86_64-unknown-linux-musl".into();
+
         for store in &mut detected {
             store.entries[0].name = "latest".into();
         }
         let stores = detected.iter().collect::<Vec<_>>();
-        assert!(!has_retained_versions(&stores));
         assert_eq!(older_generation_bytes(&stores, Some("0.157.1")), None);
+    }
+
+    #[test]
+    fn configured_pointer_must_resolve_before_estimating_reclaimability() {
+        for state in [
+            "unconfigured",
+            "resolved",
+            "missing",
+            "broken",
+            "external",
+            "file",
+        ] {
+            let home = tempfile::tempdir().unwrap();
+            for store in ["standalone", "app-server-daemon"] {
+                let root = home.path().join(".codex/packages").join(store);
+                for version in ["0.156.9", "0.157.0", "0.157.1"] {
+                    write_release(&root, &format!("{version}-x86_64-unknown-linux-musl"), 10);
+                }
+            }
+            let pointer = home.path().join(".codex/packages/standalone/current");
+            let mut rules = load_rules();
+            match state {
+                "unconfigured" => {
+                    rules
+                        .iter_mut()
+                        .find(|rule| rule.store_name.as_deref() == Some(super::STANDALONE_STORE))
+                        .unwrap()
+                        .current_pointer = None;
+                }
+                "resolved" => {
+                    symlink("releases/0.157.1-x86_64-unknown-linux-musl", &pointer).unwrap()
+                }
+                "broken" => symlink("releases/nonexistent", &pointer).unwrap(),
+                "external" => {
+                    let external = home.path().join("external-release");
+                    fs::create_dir(&external).unwrap();
+                    symlink(&external, &pointer).unwrap();
+                }
+                "file" => fs::write(&pointer, b"not a symlink").unwrap(),
+                "missing" => {}
+                _ => unreachable!(),
+            }
+            let detected = detect_release_stores_at(home.path(), &rules).unwrap();
+            let standalone = detected
+                .iter()
+                .find(|store| store.name == super::STANDALONE_STORE)
+                .unwrap();
+            assert_eq!(
+                standalone.current_pointer_configured,
+                state != "unconfigured"
+            );
+            assert_eq!(standalone.active_entry.is_some(), state == "resolved");
+            let stores = detected.iter().collect::<Vec<_>>();
+            let confirmed = matches!(state, "unconfigured" | "resolved");
+            assert_eq!(
+                older_generation_bytes(&stores, Some("0.157.1")),
+                confirmed.then_some(20),
+                "{state}"
+            );
+            let snapshot =
+                crate::json::load_snapshot("tests/fixtures/snapshot_full.json".as_ref()).unwrap();
+            let output = crate::investigate::render_investigation_with_codex_packages(
+                None,
+                &snapshot,
+                &detected,
+                Some("0.157.1"),
+            );
+            assert_eq!(
+                output.contains("potentially reclaimable"),
+                confirmed,
+                "{state}"
+            );
+            if !confirmed {
+                assert!(
+                    output.contains("Package versions do not confirm an older generation"),
+                    "{state}"
+                );
+            }
+        }
     }
 
     fn package_stores(home: &Path) -> Vec<ReleaseStore> {

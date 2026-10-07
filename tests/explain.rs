@@ -259,7 +259,7 @@ fn assert_codex_package_growth_recommendation(path: &str) {
     assert!(output.contains(&format!("+1.5G {path}")));
     assert!(output.contains("Codex release/package growth (+1.5G)"));
     assert!(output.contains("codex-cache report"));
-    assert!(output.contains("codex-cache clean --dry-run --keep current"));
+    assert!(output.contains("codex-cache clean --dry-run --keep current,previous"));
 }
 
 #[test]

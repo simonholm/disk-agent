@@ -2,6 +2,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{anyhow, Result};
+use chrono::{DateTime, Utc};
 
 use crate::json::load_snapshot;
 use crate::models::{DirectoryUsage, Snapshot};
@@ -112,7 +113,41 @@ pub fn render_report(snapshot: &Snapshot) -> String {
     } else if fs.used_percent >= 80 {
         lines.push("Disk usage is elevated.".to_string());
     } else {
-        lines.push("No action required.".to_string());
+        lines.push("Filesystem usage is below the elevated threshold (80%).".to_string());
+    }
+
+    let rules = crate::rules::load_rules();
+    let mut stores = rules
+        .iter()
+        .filter(|rule| rule.version_store)
+        .map(|rule| rule.pattern.as_str())
+        .collect::<Vec<_>>();
+    stores.push("~/.codex/packages");
+    let large_stores = stores
+        .iter()
+        .filter_map(|path| {
+            snapshot
+                .home_usage
+                .iter()
+                .chain(&snapshot.local_share_usage)
+                .chain(&snapshot.copilot_usage)
+                .chain(&snapshot.largest_directories)
+                .filter(|usage| usage.path == *path)
+                .max_by_key(|usage| usage.bytes)
+                .filter(|usage| usage.bytes >= crate::release_store::MIN_RETAINED_BYTES)
+        })
+        .collect::<Vec<_>>();
+    for usage in &large_stores {
+        if large_stores
+            .iter()
+            .any(|parent| usage.path.starts_with(&format!("{}/", parent.path)))
+        {
+            continue;
+        }
+        lines.push(format!(
+            "Substantial version-store storage in snapshot: {} {}. Run `disk-agent investigate` to check current retention; this snapshot does not establish reclaimability.",
+            format_bytes(Some(usage.bytes), false), usage.path
+        ));
     }
 
     lines.join("\n")
@@ -123,7 +158,12 @@ pub fn report_command(refresh: bool) -> Result<String> {
     if refresh {
         let snapshot = crate::snapshot::collect_snapshot()?;
         let path = crate::snapshot::save_snapshot(&snapshot, &directory)?;
-        return Ok(render_report_with_metadata(&snapshot, &path));
+        return Ok(format!(
+            "Fresh measurements collected: {}\nSnapshot saved: {}\n\n{}",
+            snapshot.timestamp,
+            path.display(),
+            render_report(&snapshot)
+        ));
     }
 
     let loaded = latest_snapshot_with_path_from(&directory)?;
@@ -131,11 +171,33 @@ pub fn report_command(refresh: bool) -> Result<String> {
 }
 
 pub fn render_report_with_metadata(snapshot: &Snapshot, path: &Path) -> String {
+    render_report_with_metadata_at(snapshot, path, Utc::now())
+}
+
+pub fn render_report_with_metadata_at(
+    snapshot: &Snapshot,
+    path: &Path,
+    now: DateTime<Utc>,
+) -> String {
+    let age = match DateTime::parse_from_rfc3339(&snapshot.timestamp) {
+        Ok(timestamp) => {
+            let seconds = now.signed_duration_since(timestamp).num_seconds();
+            if seconds < 0 {
+                "unknown (snapshot timestamp is in the future)".to_string()
+            } else {
+                format!(
+                    "{}d {}h {}m",
+                    seconds / 86400,
+                    seconds % 86400 / 3600,
+                    seconds % 3600 / 60
+                )
+            }
+        }
+        Err(_) => "unknown (invalid snapshot timestamp)".to_string(),
+    };
     format!(
-        "Snapshot: saved {}\nSource: {}\n\n{}",
-        snapshot.timestamp,
-        path.display(),
-        render_report(snapshot)
+        "Stored snapshot — current usage was not measured\nSnapshot: saved {}\nSource: {}\nSnapshot age: {age}; current usage may differ.\nRefresh: `disk-agent report --refresh` (collect and save).\nLive diagnostics: `disk-agent investigate`.\n\n{}",
+        snapshot.timestamp, path.display(), render_report(snapshot)
     )
 }
 

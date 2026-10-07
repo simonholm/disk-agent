@@ -13,3 +13,6 @@ risk: Low
 explanation: |
   GitHub Copilot CLI stores package versions under this directory.
 recommendation: Inspect retained Copilot CLI package versions under ~/.copilot/pkg/linux-x64 before considering manual removal.
+version_store: true
+version_entries: directories
+store_name: GitHub Copilot CLI

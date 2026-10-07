@@ -98,10 +98,16 @@ The Rust binary supports JSON-compatible snapshot loading and saving, report
 rendering, saved-snapshot diff/explain logic, live snapshot collection, Podman
 usage collection, and live investigation.
 
-`disk-agent report` reads the latest saved snapshot and identifies its timestamp
-and source path in the output. Use `disk-agent report --refresh` to collect and
-save a fresh snapshot before reporting. Each snapshot uses its local collection
-time in the filename, so multiple snapshots on the same day are preserved.
+`disk-agent report` reads the latest saved snapshot. It explicitly states that
+current usage was not measured and shows the snapshot timestamp, source path,
+and age; even a recent snapshot can differ from current usage. Use
+`disk-agent report --refresh` to collect and save fresh measurements, or
+`disk-agent investigate` for live diagnostics. The report assessment describes
+filesystem pressure (elevated at 80%, critical at 90%) rather than promising that
+no cleanup is useful. Version-store storage of at least 512 MiB visible in the
+snapshot is flagged for live investigation, without inferring reclaimability.
+Each snapshot uses its local collection time in the filename, so multiple
+snapshots on the same day are preserved.
 
 Collection is finite and local: filesystem statistics, bounded-depth `du`
 scans, and Podman usage from `podman system df` or rootless Podman storage when
@@ -116,6 +122,20 @@ filesystem usage, largest consumers, same-day activity when detectable, Podman
 status, an assessment, and informational recommendations. It may use today's
 saved snapshot as a same-day baseline, but it does not present itself as a
 historical snapshot comparison.
+
+Live investigation detects accumulated versions in the configured Codex
+standalone and app-server-daemon, Claude Code, and GitHub Copilot CLI stores.
+Accumulation is notable with at least three inactive versions totaling 512 MiB,
+or at least four observed versions totaling 512 MiB when the current version is
+unknown. Notable accumulation prompts investigation even without recent growth.
+Reclaimability estimates preserve current and the nearest previous stable
+numeric version. Claude requires a resolved current symlink; Copilot currently
+reports observations only because no reliable current pointer is configured.
+Codex requires the installed CLI version to be present and newest in both stores,
+consistent current-pointer evidence where available, and unambiguous versions
+of the same supported Linux platform within each store. Unconfirmed states
+remain observations only. Review package use and rollback needs before manual
+cleanup; disk-agent never deletes versions.
 
 `disk-agent explain` compares the latest two snapshots and attributes broad
 growth to changed child directories when the snapshot data supports it:

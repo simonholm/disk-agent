@@ -107,7 +107,7 @@ fn investigation_reads_like_operational_report() {
     assert!(output.contains("Healthy"));
     assert!(output.contains("Recommendations"));
     assert!(output.contains("codex-cache report"));
-    assert!(output.contains("codex-cache clean --dry-run --keep current"));
+    assert!(output.contains("codex-cache clean --dry-run --keep current,previous"));
     assert!(SUPPORTED_ASSESSMENTS.contains(&assessment_line(&output)));
     assert!(!output.contains("Growth:"));
     assert!(!output.contains("Shrinkage:"));
@@ -154,6 +154,7 @@ fn investigation_reports_codex_package_generations_conservatively() {
                 })
                 .collect(),
             active_entry: None,
+            current_pointer_configured: false,
         })
         .collect::<Vec<_>>();
     let snapshot = sample(19, 62, 0);
@@ -163,8 +164,23 @@ fn investigation_reports_codex_package_generations_conservatively() {
     assert!(output.contains("standalone:\n  0.157.0-x86_64-unknown-linux-musl (374M)"));
     assert!(output.contains("app-server-daemon:\n  0.157.0-x86_64-unknown-linux-musl (374M)"));
     assert!(output.contains("Observed release storage: 1.5G"));
-    assert!(output.contains("Older generations potentially reclaimable: 748M"));
+    assert!(output.contains("Older generations potentially reclaimable: 0B"));
     assert!(output.contains("Review package use and rollback needs before removing anything."));
+    assert!(output.contains("preserves the current CLI generation and one previous generation"));
+    let mut accumulated = stores.clone();
+    for store in &mut accumulated {
+        store
+            .entries
+            .extend(["0.156.0", "0.156.1"].map(|version| ReleaseEntry {
+                name: format!("{version}-x86_64-unknown-linux-musl"),
+                bytes: 374 * MIB,
+            }));
+    }
+    let output =
+        render_investigation_with_codex_packages(None, &snapshot, &accumulated, Some("0.157.1"));
+    assert!(output.contains("Older generations potentially reclaimable: 1.5G"));
+    assert_eq!(assessment_line(&output), "Investigation recommended");
+    assert!(!output.contains("No action required."));
 
     let mut mismatch = stores.clone();
     mismatch[1].entries[1].name = "0.157.2-x86_64-unknown-linux-musl".into();
@@ -208,6 +224,7 @@ fn investigation_reports_notable_retained_application_versions_conservatively() 
                 })
                 .collect(),
             active_entry: Some("3".to_string()),
+            current_pointer_configured: true,
         },
         ReleaseStore {
             name: "Claude".to_string(),
@@ -219,6 +236,7 @@ fn investigation_reports_notable_retained_application_versions_conservatively() 
                 4
             ],
             active_entry: None,
+            current_pointer_configured: false,
         },
     ];
 
@@ -330,7 +348,7 @@ fn investigation_recommends_codex_cache_for_both_package_stores() {
         assert!(output.contains(&format!("+1.5G {path}")));
         assert!(output.contains("Classification: Codex release/package growth"));
         assert!(output.contains("codex-cache report"));
-        assert!(output.contains("codex-cache clean --dry-run --keep current"));
+        assert!(output.contains("codex-cache clean --dry-run --keep current,previous"));
     }
 }
 
@@ -682,4 +700,52 @@ fn assessment_line(output: &str) -> &str {
         .skip_while(|line| *line != "Assessment")
         .nth(2)
         .expect("assessment value follows the Assessment heading")
+}
+
+#[test]
+fn accumulated_claude_and_copilot_versions_need_review_without_growth() {
+    for name in ["Claude", "GitHub Copilot CLI"] {
+        let mut store = ReleaseStore {
+            name: name.into(),
+            entries: ["2.1.8", "2.1.9", "2.1.10", "2.1.11"]
+                .map(|name| ReleaseEntry {
+                    name: name.into(),
+                    bytes: 256 * 1024 * 1024,
+                })
+                .to_vec(),
+            active_entry: Some("2.1.11".into()),
+            current_pointer_configured: true,
+        };
+        let snapshot = sample(19, 79, 0);
+        let output = render_investigation_with_release_stores(None, &snapshot, &[store.clone()]);
+        assert!(output.contains(
+            "Older versions potentially reclaimable (preserving current and one previous): 512M"
+        ));
+        assert_eq!(assessment_line(&output), "Investigation recommended");
+        assert!(!output.contains("No action required."));
+        store.active_entry = None;
+        let output = render_investigation_with_release_stores(None, &snapshot, &[store]);
+        assert!(output.contains("reclaimability is unknown"));
+        assert!(!output.contains("potentially reclaimable"));
+        assert_eq!(assessment_line(&output), "Investigation recommended");
+    }
+}
+
+#[test]
+fn current_and_previous_versions_do_not_trigger_accumulation_review() {
+    let store = ReleaseStore {
+        name: "Claude".into(),
+        entries: ["2.1.10", "2.1.11"]
+            .map(|name| ReleaseEntry {
+                name: name.into(),
+                bytes: 1024 * 1024 * 1024,
+            })
+            .to_vec(),
+        active_entry: Some("2.1.11".into()),
+        current_pointer_configured: true,
+    };
+    let output = render_investigation_with_release_stores(None, &sample(19, 62, 0), &[store]);
+    assert!(!output.contains("Retained application versions"));
+    assert!(!output.contains("unusually large accumulated"));
+    assert_eq!(assessment_line(&output), "Healthy");
 }

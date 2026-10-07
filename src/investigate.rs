@@ -267,7 +267,7 @@ fn render_investigation_with_all_diagnostics(
             "Retained application versions".to_string(),
             String::new(),
         ]);
-        for store in notable_stores {
+        for store in &notable_stores {
             lines.extend(release_store_status(store));
             lines.push(String::new());
         }
@@ -328,6 +328,10 @@ fn render_investigation_with_all_diagnostics(
     {
         assessment = "Healthy".to_string();
     }
+    let accumulated_versions = release_stores.iter().any(ReleaseStore::is_notable);
+    if accumulated_versions && assessment != "Large unclassified growth" {
+        assessment = "Investigation recommended".to_string();
+    }
     lines.extend([
         String::new(),
         "Assessment".to_string(),
@@ -346,6 +350,9 @@ fn render_investigation_with_all_diagnostics(
         copilot_package_growth
             .then(|| classify_path("~/.copilot/pkg/linux-x64", Some(&rules)).recommendation),
     ));
+    if accumulated_versions {
+        lines.push("Review unusually large accumulated CLI/runtime versions; preserve the current version and at least one previous version. Diagnostics are informational only.".to_string());
+    }
     lines.join("\n").trim_end().to_string()
 }
 
@@ -407,6 +414,10 @@ fn codex_packages_status(stores: &[&ReleaseStore], installed_version: Option<&st
         crate::output::format_bytes(Some(total_bytes), false)
     ));
     if let Some(bytes) = older_generation_bytes(stores, installed_version) {
+        lines.push(
+            "Estimate preserves the current CLI generation and one previous generation per store."
+                .to_string(),
+        );
         lines.push(format!(
             "Older generations potentially reclaimable: {}",
             crate::output::format_bytes(Some(bytes), false)
@@ -619,6 +630,17 @@ fn release_store_status(store: &ReleaseStore) -> Vec<String> {
                 crate::output::format_bytes(Some(store.total_storage_bytes()), false)
             ),
         ]),
+    }
+    if let Some(bytes) = store.reclaimable_bytes() {
+        lines.push(format!(
+            "Older versions potentially reclaimable (preserving current and one previous): {}",
+            crate::output::format_bytes(Some(bytes), false)
+        ));
+    } else {
+        lines.push(
+            "Current version or version ordering is unconfirmed; reclaimability is unknown."
+                .to_string(),
+        );
     }
     lines.push(
         "Review retained versions before removal; rollback or package-manager retention may be intentional."
