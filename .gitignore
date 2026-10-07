@@ -4,3 +4,4 @@ __pycache__/
 .venv/
 .disk-agent/
 target/
+codex-session-*.md
