@@ -57,57 +57,38 @@ pub fn render_report(snapshot: &Snapshot) -> String {
             format_bytes(Some(fs.total_bytes), false)
         ),
         String::new(),
-        "Top consumers:".to_string(),
-        String::new(),
+        "Directories (nested sizes overlap):".to_string(),
     ];
 
-    let consumers = top_consumers(snapshot, 5);
+    let consumers = directory_overview(snapshot);
     if consumers.is_empty() {
         lines.push("No directory data available.".to_string());
     } else {
-        lines.extend(
-            consumers
-                .iter()
-                .map(|item| format!("{} {}", format_bytes(Some(item.bytes), false), item.path)),
-        );
+        lines.extend(consumers.iter().map(|item| {
+            format!(
+                "{:>8}  {}",
+                format_bytes(Some(item.bytes), false),
+                item.path
+            )
+        }));
     }
 
-    lines.extend([String::new(), "Podman:".to_string(), String::new()]);
+    lines.push(String::new());
     if snapshot.podman.available {
-        lines.extend([
-            format!(
-                "Images: {}",
-                format_bytes(snapshot.podman.images_bytes, false)
-            ),
-            format!(
-                "Containers: {}",
-                format_bytes(snapshot.podman.containers_bytes, false)
-            ),
-            format!(
-                "Volumes: {}",
-                format_bytes(snapshot.podman.volumes_bytes, false)
-            ),
-        ]);
+        lines.push(format!(
+            "Podman: images {}; containers {}; volumes {}",
+            format_bytes(snapshot.podman.images_bytes, false),
+            format_bytes(snapshot.podman.containers_bytes, false),
+            format_bytes(snapshot.podman.volumes_bytes, false),
+        ));
     } else {
         lines.push(format!(
-            "Unavailable ({}).",
+            "Podman: unavailable ({}).",
             snapshot.podman.error.as_deref().unwrap_or("unknown error")
         ));
     }
 
-    lines.extend([
-        String::new(),
-        "Largest directories:".to_string(),
-        String::new(),
-    ]);
-    lines.extend(
-        snapshot
-            .largest_directories
-            .iter()
-            .take(10)
-            .map(|item| format!("{} {}", format_bytes(Some(item.bytes), false), item.path)),
-    );
-    lines.extend([String::new(), "Assessment:".to_string()]);
+    lines.extend([String::new(), "Observations:".to_string()]);
     if fs.used_percent >= 90 {
         lines.push("Disk usage is critical.".to_string());
     } else if fs.used_percent >= 80 {
@@ -137,6 +118,9 @@ pub fn render_report(snapshot: &Snapshot) -> String {
                 .filter(|usage| usage.bytes >= crate::release_store::MIN_RETAINED_BYTES)
         })
         .collect::<Vec<_>>();
+    if !large_stores.is_empty() {
+        lines.push("Substantial version-store storage in snapshot:".to_string());
+    }
     for usage in &large_stores {
         if large_stores
             .iter()
@@ -145,12 +129,26 @@ pub fn render_report(snapshot: &Snapshot) -> String {
             continue;
         }
         lines.push(format!(
-            "Substantial version-store storage in snapshot: {} {}. Run `disk-agent investigate` to check current retention; this snapshot does not establish reclaimability.",
-            format_bytes(Some(usage.bytes), false), usage.path
+            "{:>8}  {}",
+            format_bytes(Some(usage.bytes), false),
+            usage.path
         ));
     }
+    if !large_stores.is_empty() {
+        lines.push("Reclaimability is unknown; this snapshot does not establish it.".into());
+        lines.push("Check current retention: `disk-agent investigate` (live diagnostics).".into());
+    }
+    if !snapshot.warnings.is_empty() {
+        lines.extend([String::new(), "Collection warnings:".into()]);
+        lines.extend(
+            snapshot
+                .warnings
+                .iter()
+                .map(|warning| format!("  {warning}")),
+        );
+    }
 
-    lines.join("\n")
+    wrap_report(&lines.join("\n"))
 }
 
 pub fn report_command(refresh: bool) -> Result<String> {
@@ -158,12 +156,13 @@ pub fn report_command(refresh: bool) -> Result<String> {
     if refresh {
         let snapshot = crate::snapshot::collect_snapshot()?;
         let path = crate::snapshot::save_snapshot(&snapshot, &directory)?;
-        return Ok(format!(
-            "Fresh measurements collected: {}\nSnapshot saved: {}\n\n{}",
+        let report = render_report(&snapshot);
+        let (usage, details) = report.split_once('\n').unwrap_or((&report, ""));
+        return Ok(wrap_report(&format!(
+            "{usage}\nFresh measurements collected: {}\n{details}\n\nSnapshot saved: {}",
             snapshot.timestamp,
             path.display(),
-            render_report(&snapshot)
-        ));
+        )));
     }
 
     let loaded = latest_snapshot_with_path_from(&directory)?;
@@ -195,21 +194,53 @@ pub fn render_report_with_metadata_at(
         }
         Err(_) => "unknown (invalid snapshot timestamp)".to_string(),
     };
-    format!(
-        "Stored snapshot — current usage was not measured\nSnapshot: saved {}\nSource: {}\nSnapshot age: {age}; current usage may differ.\nRefresh: `disk-agent report --refresh` (collect and save).\nLive diagnostics: `disk-agent investigate`.\n\n{}",
-        snapshot.timestamp, path.display(), render_report(snapshot)
-    )
+    let report = render_report(snapshot);
+    let (usage, details) = report.split_once('\n').unwrap_or((&report, ""));
+    wrap_report(&format!(
+        "{usage}\nSnapshot age: {age}; current usage may differ.\nStored snapshot — current usage was not measured\nSaved: {}\n{details}\n\nRefresh: `disk-agent report --refresh` (collect and save).\nLive diagnostics: `disk-agent investigate`.\nSource: {}",
+        snapshot.timestamp, path.display()
+    ))
 }
 
-fn top_consumers(snapshot: &Snapshot, limit: usize) -> Vec<&DirectoryUsage> {
+fn directory_overview(snapshot: &Snapshot) -> Vec<&DirectoryUsage> {
+    // Merge the two former report lists without repeating an identical observation.
     let mut values = snapshot
         .home_usage
         .iter()
         .filter(|item| item.path != "~" && item.path.matches('/').count() == 1)
+        .chain(snapshot.largest_directories.iter().take(10))
         .collect::<Vec<_>>();
-    values.sort_by(|left, right| right.bytes.cmp(&left.bytes));
-    values.truncate(limit);
+    values.sort_by(|left, right| {
+        right
+            .bytes
+            .cmp(&left.bytes)
+            .then(left.path.cmp(&right.path))
+    });
+    values.dedup_by(|left, right| left.path == right.path && left.bytes == right.bytes);
+    values.truncate(10);
     values
+}
+
+fn wrap_report(report: &str) -> String {
+    let mut lines = Vec::new();
+    for line in report.lines() {
+        let mut remaining = line;
+        while remaining.chars().count() > 80 {
+            let end = remaining
+                .char_indices()
+                .nth(80)
+                .map(|(index, _)| index)
+                .unwrap();
+            let split = remaining[..end]
+                .rfind(' ')
+                .filter(|&index| index > 0)
+                .unwrap_or(end);
+            lines.push(remaining[..split].to_string());
+            remaining = remaining[split..].trim_start();
+        }
+        lines.push(remaining.to_string());
+    }
+    lines.join("\n")
 }
 
 fn is_snapshot_name(path: &Path) -> bool {

@@ -7,15 +7,16 @@ fn report_renders_loaded_snapshot_summary() {
     let output = render_report(&snapshot);
 
     assert!(output.contains("Filesystem usage: 60% (600B of 1000B)"));
-    assert!(output.contains("Top consumers:"));
-    assert!(output.contains("200M ~/labs"));
-    assert!(output.contains("100M ~/.cache"));
+    assert!(output.contains("Directories (nested sizes overlap):"));
+    assert!(output.contains("200M  ~/labs"));
+    assert!(output.contains("100M  ~/.cache"));
     assert!(output.contains("Podman:"));
-    assert!(output.contains("Images: 100B"));
-    assert!(output.contains("Containers: 200B"));
-    assert!(output.contains("Volumes: 300B"));
-    assert!(output.contains("Largest directories:"));
-    assert!(output.contains("Assessment:"));
+    assert!(output.contains("images 100B"));
+    assert!(output.contains("containers 200B"));
+    assert!(output.contains("volumes 300B"));
+    assert!(!output.contains("Largest directories:"));
+    assert_eq!(output.matches("~/labs").count(), 1);
+    assert!(output.contains("Observations:"));
     assert!(output.contains("Filesystem usage is below the elevated threshold (80%)."));
     assert!(!output.contains("No action required."));
 }
@@ -28,8 +29,9 @@ fn report_identifies_snapshot_metadata() {
         "~/.disk-agent/snapshots/2026-06-19.json".as_ref(),
     );
 
-    assert!(output.starts_with("Stored snapshot — current usage was not measured\n"));
-    assert!(output.contains("Snapshot: saved 2026-06-19T10:50:00+00:00\n"));
+    assert!(output.starts_with("Filesystem usage: 60% (600B of 1000B)\nSnapshot age:"));
+    assert!(output.contains("Stored snapshot — current usage was not measured"));
+    assert!(output.contains("Saved: 2026-06-19T10:50:00+00:00\n"));
     assert!(output.contains("Snapshot age:"));
     assert!(output.contains("disk-agent report --refresh"));
     assert!(output.contains("disk-agent investigate"));
@@ -87,8 +89,16 @@ fn report_flags_large_stored_version_sizes_without_claiming_reclaimability() {
         output
             .matches("Substantial version-store storage in snapshot:")
             .count(),
-        3
+        1
     );
+    for path in [
+        "~/.codex/packages",
+        "~/.local/share/claude/versions",
+        "~/.copilot/pkg/linux-x64",
+    ] {
+        assert!(output.contains(path));
+    }
+    assert!(output.contains("Reclaimability is unknown"));
     assert!(output.contains("disk-agent investigate"));
     assert!(!output.contains("potentially reclaimable"));
     assert!(!output.contains("No action required"));
@@ -112,4 +122,26 @@ fn large_persistent_state_alone_is_not_treated_as_version_storage() {
             bytes: 6_000_000_000,
         });
     assert!(!render_report(&snapshot).contains("Substantial version-store"));
+}
+
+#[test]
+fn report_keeps_collection_warnings_and_unavailable_measurements_at_80_columns() {
+    let mut snapshot = load_snapshot("tests/fixtures/snapshot_full.json".as_ref()).unwrap();
+    snapshot.warnings = vec![format!(
+        "du: {}: permission denied",
+        "long directory name ".repeat(8)
+    )];
+    snapshot.podman.images_bytes = None;
+    let output = render_report(&snapshot);
+    assert!(output.contains("images unavailable"));
+    assert!(output.contains("Collection warnings:"));
+    assert!(output.contains("permission denied"));
+    assert!(output.lines().all(|line| line.chars().count() <= 80));
+    snapshot.podman.available = false;
+    snapshot.podman.error = Some("permission denied".into());
+    snapshot.home_usage.clear();
+    snapshot.largest_directories.clear();
+    let output = render_report(&snapshot);
+    assert!(output.contains("Podman: unavailable (permission denied)"));
+    assert!(output.contains("No directory data available."));
 }

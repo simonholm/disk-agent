@@ -99,7 +99,8 @@ fn refreshed_report_collects_and_saves_fresh_measurements() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8(output.stdout).unwrap();
-    assert!(stdout.starts_with("Fresh measurements collected:"));
+    assert!(stdout.starts_with("Filesystem usage: 64%"));
+    assert!(stdout.contains("Fresh measurements collected:"));
     assert!(stdout.contains("Filesystem usage: 64%"));
     assert!(!stdout.contains("current usage was not measured"));
     let snapshots =
