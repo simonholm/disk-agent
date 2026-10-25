@@ -760,11 +760,12 @@ fn scan_evidence(
 
     ScanEvidence {
         large_unclassified_growth,
-        investigation_recommended: !low_risk_classified_recent
-            && (current.filesystem.used_percent >= 85
-                || largest_recent >= LARGE_GROWTH_BYTES
-                || has_unclassified_change
-                || warning_pressure),
+        investigation_recommended: current.filesystem.used_percent >= 90
+            || (!low_risk_classified_recent
+                && (current.filesystem.used_percent >= 85
+                    || largest_recent >= LARGE_GROWTH_BYTES
+                    || has_unclassified_change
+                    || warning_pressure)),
         container_storage_increasing,
         build_artifacts_accumulating: build_recent || build_artifacts,
         cache_growth_expected: cache_recent || cache_current,

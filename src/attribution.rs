@@ -14,10 +14,14 @@ pub fn top_contributors(before: &Snapshot, after: &Snapshot, limit: usize) -> Ve
         .into_iter()
         .filter(|change| change.bytes > 0)
         .collect::<Vec<_>>();
+    select_contributors(&changes, limit)
+}
+
+pub(crate) fn select_contributors(changes: &[UsageChange], limit: usize) -> Vec<UsageChange> {
     let mut candidates = BTreeMap::<String, i64>::new();
 
-    for change in &changes {
-        let descendants = changed_descendants(change, &changes);
+    for change in changes {
+        let descendants = changed_descendants(change, changes);
         if descendants.is_empty() {
             candidates
                 .entry(change.path.clone())
@@ -99,7 +103,7 @@ pub fn cause_summary(
         }
     }
     if totals.is_empty() && !contributors.is_empty() {
-        return "Growth occurred in unclassified locations.".to_string();
+        return "Selected observed directory growth is in unclassified locations.".to_string();
     }
     if totals.is_empty() {
         return "No significant directory growth.".to_string();
@@ -116,9 +120,9 @@ pub fn cause_summary(
         .map(|(category, bytes)| format!("{category} ({})", format_bytes(Some(bytes), true)))
         .collect::<Vec<_>>();
     match parts.as_slice() {
-        [one] => format!("Growth is primarily due to {one}."),
-        [one, two] => format!("Growth is primarily due to {one} and {two}."),
-        _ => "Growth occurred in unclassified locations.".to_string(),
+        [one] => format!("Selected observed directory growth: {one}."),
+        [one, two] => format!("Selected observed directory growth: {one} and {two}."),
+        _ => "Selected observed directory growth is in unclassified locations.".to_string(),
     }
 }
 
@@ -150,9 +154,6 @@ pub fn unclassified_growth_lines(classifications: &[(UsageChange, Classification
 }
 
 pub fn risk_level(after: &Snapshot, classifications: &[(UsageChange, Classification)]) -> String {
-    if classifications.is_empty() {
-        return "Low".to_string();
-    }
     let classifications = mutually_exclusive_classifications(classifications);
     let known_bytes = classifications
         .iter()
@@ -164,12 +165,11 @@ pub fn risk_level(after: &Snapshot, classifications: &[(UsageChange, Classificat
         .filter(|(_, classification)| !classification.known)
         .map(|(change, _)| change.bytes)
         .sum::<i64>();
-    if unknown_bytes > 0 && unknown_bytes >= known_bytes {
-        return "Unknown".to_string();
-    }
-
     let constrained = after.filesystem.used_percent >= 90;
     let approaching = after.filesystem.used_percent >= 80;
+    if unknown_bytes > 0 && unknown_bytes >= known_bytes && !approaching {
+        return "Unknown".to_string();
+    }
     let sensitive = classifications.iter().any(|(_, classification)| {
         matches!(
             classification.category.as_str(),
@@ -197,10 +197,13 @@ pub fn risk_level(after: &Snapshot, classifications: &[(UsageChange, Classificat
 }
 
 pub fn recommendations(classifications: &[(UsageChange, Classification)]) -> Vec<String> {
-    if classifications.is_empty() {
-        return vec!["No cleanup is currently required.".to_string()];
-    }
+    recommendations_with_reassurance(classifications, true)
+}
 
+pub(crate) fn recommendations_with_reassurance(
+    classifications: &[(UsageChange, Classification)],
+    allow_reassurance: bool,
+) -> Vec<String> {
     let classifications = mutually_exclusive_classifications(classifications);
     let known_bytes = classifications
         .iter()
@@ -221,14 +224,15 @@ pub fn recommendations(classifications: &[(UsageChange, Classification)]) -> Vec
         .iter()
         .filter(|(_, classification)| classification.known || meaningful_unclassified)
     {
-        let recommendation = recommendation_for_category(classification);
+        let recommendation = recommendation_for_category(classification, allow_reassurance);
         if seen.insert(recommendation.clone()) {
             items.push(recommendation);
         }
     }
-    if !items
-        .iter()
-        .any(|item| item == "No cleanup is currently required.")
+    if allow_reassurance
+        && !items
+            .iter()
+            .any(|item| item == "No cleanup is currently required.")
     {
         items.push("No cleanup is currently required.".to_string());
     }
@@ -274,16 +278,17 @@ fn changed_descendants<'a>(
         .collect()
 }
 
-fn recommendation_for_category(classification: &Classification) -> String {
+fn recommendation_for_category(classification: &Classification, allow_reassurance: bool) -> String {
     if classification.classification == "uv cache" {
         return classification.recommendation.clone();
     }
 
     match classification.category.as_str() {
         "Downloads" => "Review ~/Downloads if the increase was unexpected.".to_string(),
-        "Cache" => {
+        "Cache" if allow_reassurance => {
             "Cache growth is usually safe to inspect later; no cleanup is required now.".to_string()
         }
+        "Cache" => "Inspect cache growth before deciding whether cleanup is needed.".to_string(),
         "Development" => {
             "Review recent build artifacts or repository changes if unexpected.".to_string()
         }

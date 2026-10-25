@@ -495,6 +495,30 @@ fn investigation_reports_stale_repository_local_cargo_target_without_cleanup_cla
 }
 
 #[test]
+fn critical_utilization_requires_investigation_despite_small_low_risk_growth() {
+    for percent in [89, 90, 95, 100] {
+        let before = sample(19, percent, 0);
+        let mut after = sample(19, percent, 0);
+        after.home_usage.push(DirectoryUsage {
+            path: "~/.cargo-target".into(),
+            bytes: 60 * 1024 * 1024,
+        });
+        let output = render_investigation(Some(&before), &after);
+        assert!(output.contains("+60M ~/.cargo-target"), "{output}");
+        if percent >= 90 {
+            assert_eq!(
+                assessment_line(&output),
+                "Investigation recommended",
+                "{output}"
+            );
+            assert!(!output.contains("No action required."), "{output}");
+        } else {
+            assert_eq!(assessment_line(&output), "Healthy", "{output}");
+        }
+    }
+}
+
+#[test]
 fn low_risk_classified_same_day_growth_does_not_force_investigation() {
     let before = sample(19, 84, 0);
     let mut after = sample(19, 86, 0);
